@@ -232,9 +232,9 @@ function sizeGame(){
 }
 window.addEventListener('resize',()=>{ if(!$('gameScreen').hidden) sizeGame(); });
 
-const METER=50, GRAV=1500, MAXV=1450;
+const METER=50, GRAV=1500, MAXV=950;
 const ramps=[];
-for(let i=0;i<40;i++) ramps.push(1000+i*1600+((i*7919)%400));
+for(let i=0;i<30;i++) ramps.push(1500+i*2600+((i*7919)%600));
 
 function baseY(x){ return 260 + x*0.22 + 30*Math.sin(x*0.006) + 18*Math.sin(x*0.017+1.7); }
 function kickerLift(x){
@@ -251,7 +251,7 @@ const G={ running:false };
 function startRun(){
   Object.assign(G,{
     running:true, overShown:false,
-    x:0, px:0, y:groundY(0), vx:340, vy:0,
+    x:0, px:0, y:groundY(0), vx:300, vy:0,
     angle:0, tilt:0, airRot:0, flips:0,
     grounded:true, spinHeld:false,
     crashed:false, crashT:0, headFirst:false,
@@ -267,7 +267,7 @@ function startRun(){
 
 function doJump(){
   if(!G.running||G.crashed||!G.grounded) return;
-  G.grounded=false; G.vy=-560; G.airRot=0; G.flips=0;
+  G.grounded=false; G.vy=-520; G.airRot=0; G.flips=0;
   sfx.jump();
 }
 
@@ -292,12 +292,12 @@ function step(dt){
     const gy=groundY(G.x);
     G.vy=(gy-G.y)/dt; G.y=gy;
     const s=slopeAt(G.x);
-    G.vx+=(24+110*s)*dt;
-    G.vx=Math.max(240,Math.min(MAXV,G.vx));
+    G.vx+=(16+70*s)*dt;
+    G.vx=Math.max(220,Math.min(MAXV,G.vx));
     for(const rx of ramps){
       if(prevX<rx+18 && G.x>=rx+18){
         G.grounded=false;
-        G.vy=-(380+G.vx*0.42);
+        G.vy=-(360+G.vx*0.38);
         G.airRot=0; G.flips=0;
         $('flipPop').classList.remove('show');
         sfx.launch();
