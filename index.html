@@ -333,13 +333,17 @@ function closeCutout(){
 function repaintCut(){
   const w=CC.width,h=CC.height,m=maskC.getContext('2d');
   m.setTransform(1,0,0,1,0,0);
-  m.fillStyle='#000'; m.fillRect(0,0,w,h);
+  // 遮罩：透明底 + 白色笔触（destination-out 按透明度擦除，底必须是透明的）
+  m.globalCompositeOperation='source-over';
+  m.clearRect(0,0,w,h);
   m.lineCap='round'; m.lineJoin='round';
   for(const s of maskStrokes){
-    m.strokeStyle=s.erase?'#000':'#fff'; m.lineWidth=s.w; m.beginPath();
+    m.globalCompositeOperation=s.erase?'destination-out':'source-over';
+    m.strokeStyle='#fff'; m.lineWidth=s.w; m.beginPath();
     s.pts.forEach((p,i)=> i?m.lineTo(p[0],p[1]):m.moveTo(p[0],p[1]));
     m.stroke();
   }
+  m.globalCompositeOperation='source-over';
   const g=CC.getContext('2d');
   g.setTransform(1,0,0,1,0,0);
   g.clearRect(0,0,w,h);
