@@ -358,6 +358,18 @@ function showOver(){
 }
 
 /* ---------- 游戏：渲染 ---------- */
+const bgImg=new Image(); let bgReady=false;
+bgImg.onload=()=>{ bgReady=true; };
+bgImg.src='bg.webp';
+function drawPhotoBG(){
+  const iw=bgImg.naturalWidth, ih=bgImg.naturalHeight;
+  if(!iw||!ih) return;
+  const s=Math.max(W/iw,H/ih)*1.06, dw=iw*s, dh=ih*s;
+  const maxX=Math.max(0,dw-W), maxY=Math.max(0,dh-H);
+  const ox=(W-dw)/2-Math.min(Math.max(G.camX*0.04,0),maxX);
+  const oy=(H-dh)/2-Math.min(Math.max((G.camY+200)*0.06,0),maxY);
+  gx.drawImage(bgImg,ox,oy,dw,dh);
+}
 function updateCam(dt){
   const k=Math.min(1,7*dt);
   G.camX+=((G.x-W*0.35)-G.camX)*k;
@@ -388,25 +400,6 @@ function ridge(par,color,baseY0,amp,seed){
     gx.lineTo(sx,y);
   }
   gx.lineTo(W+4,H+4); gx.closePath(); gx.fill();
-}
-function pines(){
-  const cell=300;
-  const c0=Math.floor((G.camX-100)/cell), c1=Math.floor((G.camX+W+100)/cell);
-  for(let c=c0;c<=c1;c++){
-    const hsh=(Math.abs(Math.sin(c*127.1)*43758.5))%1;
-    if(hsh<0.45) continue;
-    const px=c*cell+hsh*220, py=groundY(px);
-    const sx=px-G.camX, sy=py-G.camY, s=0.8+hsh*0.7;
-    gx.fillStyle='#5b422e'; gx.fillRect(sx-3*s,sy-10*s,6*s,10*s);
-    gx.fillStyle='#2f6b4f';
-    for(let i=0;i<3;i++){
-      const w=(56-i*13)*s, y0=sy-8*s-i*26*s;
-      gx.beginPath(); gx.moveTo(sx,y0-30*s); gx.lineTo(sx-w/2,y0); gx.lineTo(sx+w/2,y0); gx.closePath(); gx.fill();
-    }
-    gx.fillStyle='rgba(255,255,255,.9)';
-    const ty=sy-8*s-2*26*s;
-    gx.beginPath(); gx.moveTo(sx,ty-30*s); gx.lineTo(sx-9*s,ty-12*s); gx.lineTo(sx+9*s,ty-12*s); gx.closePath(); gx.fill();
-  }
 }
 function drawSlope(){
   const g=gx.createLinearGradient(0,H*0.35,0,H);
@@ -461,17 +454,15 @@ function drawSkier(){
 }
 function render(){
   gx.setTransform(DPR,0,0,DPR,0,0);
-  const sky=gx.createLinearGradient(0,0,0,H);
-  sky.addColorStop(0,'#5f9df7'); sky.addColorStop(.55,'#a9ccf7'); sky.addColorStop(1,'#e8f2ff');
-  gx.fillStyle=sky; gx.fillRect(0,0,W,H);
-  gx.fillStyle='rgba(255,244,200,.9)';
-  gx.beginPath(); gx.arc(W*0.84-G.camX*0.03,110,42,0,7); gx.fill();
-  clouds();
-  ridge(0.25,'#8fa9dd',H*0.60,130,1.3);
-  ridge(0.5,'#a9c2ea',H*0.72,95,4.1);
+  if(bgReady){ drawPhotoBG(); }
+  else{
+    const sky=gx.createLinearGradient(0,0,0,H);
+    sky.addColorStop(0,'#5f9df7'); sky.addColorStop(.55,'#a9ccf7'); sky.addColorStop(1,'#e8f2ff');
+    gx.fillStyle=sky; gx.fillRect(0,0,W,H);
+  }
   drawSlope();
   drawRamps();
-  pines();
+  drawSkier();
   drawSkier();
 }
 
