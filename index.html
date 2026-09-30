@@ -61,7 +61,7 @@ window.cutoutPhoto=async(blob,onStage)=>{
     _remover=mod.removeBackground;
   }
   onStage&&onStage('cut');
-  return await _remover(blob);
+  return await _remover(blob,{model:'isnet_quint8'});
 };
 </script>
 </head>
@@ -70,7 +70,7 @@ window.cutoutPhoto=async(blob,onStage)=>{
 <!-- 画板 -->
 <div class="screen" id="drawScreen">
   <h1 class="title">涂鸦滑雪<span class="en">SKETCHY SKIER</span></h1>
-  <p class="sub">画出你的滑手，或上传照片自动抠出人物和滑板 🏂</p>
+  <p class="sub">画出你的滑手，或上传照片（已抠好的透明图可直接用）🏂</p>
   <canvas id="drawCanvas"></canvas>
   <div class="colors" id="colorRow"></div>
   <div class="row">
@@ -272,6 +272,18 @@ $('fileInput').addEventListener('change',async e=>{
     c.width=Math.round(bmp.width*sc); c.height=Math.round(bmp.height*sc);
     c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
     if(bmp.close) bmp.close();
+    // 已抠好的透明图：直接使用，跳过 AI
+    const px=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+    let tp=0; const pstep=4*7;
+    for(let i=3;i<px.length;i+=pstep){ if(px[i]<128) tp++; }
+    if(tp/(px.length/pstep)>0.005){
+      photoImg=trimAlpha(c,c.width,c.height);
+      savePhoto(); redrawDraw();
+      $('photoRow').hidden=false;
+      st.textContent='✅ 检测到透明背景，已直接使用！';
+      setTimeout(()=>{ st.hidden=true; },2500);
+      return;
+    }
     const inBlob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.92));
     if(typeof window.cutoutPhoto!=='function') throw new Error('no-module');
     const outBlob=await window.cutoutPhoto(inBlob,stage=>{
