@@ -622,14 +622,15 @@ function drawTrail(){
 const bgImg=new Image(); let bgReady=false;
 bgImg.onload=()=>{ bgReady=true; };
 bgImg.src='bg.webp';
+const PAR_MAX=140; // 背景视差最大偏移，照片预留该余量后永不露边
 function drawPhotoBG(){
   const iw=bgImg.naturalWidth, ih=bgImg.naturalHeight;
   if(!iw||!ih) return;
-  const s=Math.max(W/iw,H/ih)*1.06, dw=iw*s, dh=ih*s;
-  const maxX=Math.max(0,dw-W), maxY=Math.max(0,dh-H);
-  const ox=(W-dw)/2-Math.min(Math.max(G.camX*0.04,0),maxX);
-  const oy=(H-dh)/2-Math.min(Math.max((G.camY+200)*0.06,0),maxY);
-  gx.drawImage(bgImg,ox,oy,dw,dh);
+  const px=Math.min(Math.max(G.camX*0.04,0),PAR_MAX);
+  const py=Math.min(Math.max((G.camY+200)*0.06,0),PAR_MAX);
+  const s=Math.max((W+PAR_MAX+2)/iw,(H+PAR_MAX+2)/ih); // 覆盖屏幕+视差余量
+  const dw=iw*s, dh=ih*s;
+  gx.drawImage(bgImg,-px,-py,dw,dh);
 }
 function updateCam(dt){
   const k=Math.min(1,7*dt);
