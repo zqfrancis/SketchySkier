@@ -51,26 +51,19 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
 .stat div{font-size:13px;color:#9aa7d0;}
 .stat b{display:block;font-size:24px;color:#fff;}
 #cutoutStatus{color:#7dffcb;}
+#cutoutScreen{justify-content:center;}
+#cutCanvas{border-radius:14px;border:2px solid #2a3568;touch-action:none;max-width:94vw;}
+#cutTools{align-items:center;}
+#cutTools .btn.tool-on{background:linear-gradient(135deg,#ff6ec7,#ff9a5e);color:#fff;}
+#brushSize{width:110px;accent-color:#ff6ec7;}
 </style>
-<script type="module">
-let _remover=null;
-window.cutoutPhoto=async(blob,onStage)=>{
-  if(!_remover){
-    onStage&&onStage('model');
-    const mod=await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm');
-    _remover=mod.removeBackground;
-  }
-  onStage&&onStage('cut');
-  return await _remover(blob,{model:'isnet_quint8'});
-};
-</script>
 </head>
 <body>
 
 <!-- 画板 -->
 <div class="screen" id="drawScreen">
   <h1 class="title">涂鸦滑雪<span class="en">SKETCHY SKIER</span></h1>
-  <p class="sub">画出你的滑手，或上传照片（已抠好的透明图可直接用）🏂</p>
+  <p class="sub">画出你的滑手，或上传照片、亲手抠出人物和滑板 🏂</p>
   <canvas id="drawCanvas"></canvas>
   <div class="colors" id="colorRow"></div>
   <div class="row">
@@ -86,6 +79,22 @@ window.cutoutPhoto=async(blob,onStage)=>{
   <input id="nameInput" maxlength="12" placeholder="给滑手起个名字" />
   <button class="btn big" id="startBtn">开滑！⛷️</button>
   <p class="hint">轻点屏幕起跳，跳台后有大片滞空区，空中按住转圈、松手即停，脚先落地才算数</p>
+</div>
+
+<!-- 抠图 -->
+<div class="screen" id="cutoutScreen" hidden>
+  <div class="row" id="cutTools">
+    <button class="btn ghost tool-on" id="paintBtn">🖌️ 涂抹</button>
+    <button class="btn ghost" id="eraseBtn">🧽 擦除</button>
+    <input type="range" id="brushSize" min="8" max="90" value="34" />
+  </div>
+  <canvas id="cutCanvas"></canvas>
+  <div class="row">
+    <button class="btn ghost" id="cutUndoBtn">↩ 撤销</button>
+    <button class="btn big" id="cutOkBtn">✅ 确认</button>
+    <button class="btn ghost" id="cutCancelBtn">✕ 取消</button>
+  </div>
+  <p class="hint" id="cutHint">在人物和滑板上涂抹，亮起的部分会被保留为滑手</p>
 </div>
 
 <!-- 游戏 -->
@@ -284,26 +293,101 @@ $('fileInput').addEventListener('change',async e=>{
       setTimeout(()=>{ st.hidden=true; },2500);
       return;
     }
-    const inBlob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.92));
-    if(typeof window.cutoutPhoto!=='function') throw new Error('no-module');
-    const outBlob=await window.cutoutPhoto(inBlob,stage=>{
-      st.textContent=stage==='model'?'⏳ 下载抠图模型（仅首次，约40MB）…':'✂️ 抠图中…';
-    });
-    const url=URL.createObjectURL(outBlob);
-    const img=await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=url; });
-    URL.revokeObjectURL(url);
-    photoImg=trimAlpha(img,img.naturalWidth,img.naturalHeight);
-    savePhoto(); redrawDraw();
-    $('photoRow').hidden=false;
-    st.textContent='✅ 抠图完成！可以直接开滑，或再加点涂鸦';
-    setTimeout(()=>{ st.hidden=true; },3000);
+    st.hidden=true;
+    openCutout(c); // 不透明照片 → 手动抠图
   }catch(err){
-    console.warn('cutout failed',err);
-    st.textContent='❌ 抠图失败（需要联网下载模型），请重试';
+    console.warn('upload',err);
+    st.textContent='❌ 读取照片失败，请换一张试试';
   }
 });
 $('removePhotoBtn').onclick=()=>{
   photoImg=null; savePhoto(); $('photoRow').hidden=true; redrawDraw();
+};
+
+/* ---------- 手动抠图 ---------- */
+const CC=$('cutCanvas');
+let cutSrcFull=null, cutMode='paint', maskStrokes=[], cutting=false;
+const maskC=document.createElement('canvas'), dimC=document.createElement('canvas');
+function setCutMode(m){
+  cutMode=m;
+  $('paintBtn').classList.toggle('tool-on',m==='paint');
+  $('eraseBtn').classList.toggle('tool-on',m==='erase');
+}
+function openCutout(srcCanvas){
+  cutSrcFull=srcCanvas;
+  const availW=Math.min(window.innerWidth-24,560);
+  const availH=window.innerHeight-300;
+  const sc=Math.min(availW/srcCanvas.width,availH/srcCanvas.height,1);
+  CC.width=Math.max(2,Math.round(srcCanvas.width*sc));
+  CC.height=Math.max(2,Math.round(srcCanvas.height*sc));
+  maskC.width=CC.width; maskC.height=CC.height;
+  dimC.width=CC.width; dimC.height=CC.height;
+  maskStrokes=[]; setCutMode('paint');
+  $('cutHint').textContent='在人物和滑板上涂抹，亮起的部分会被保留为滑手';
+  $('drawScreen').hidden=true; $('cutoutScreen').hidden=false;
+  repaintCut();
+}
+function closeCutout(){
+  $('cutoutScreen').hidden=true; $('drawScreen').hidden=false; sizeDraw();
+}
+function repaintCut(){
+  const w=CC.width,h=CC.height,m=maskC.getContext('2d');
+  m.setTransform(1,0,0,1,0,0);
+  m.fillStyle='#000'; m.fillRect(0,0,w,h);
+  m.lineCap='round'; m.lineJoin='round';
+  for(const s of maskStrokes){
+    m.strokeStyle=s.erase?'#000':'#fff'; m.lineWidth=s.w; m.beginPath();
+    s.pts.forEach((p,i)=> i?m.lineTo(p[0],p[1]):m.moveTo(p[0],p[1]));
+    m.stroke();
+  }
+  const g=CC.getContext('2d');
+  g.setTransform(1,0,0,1,0,0);
+  g.clearRect(0,0,w,h);
+  g.drawImage(cutSrcFull,0,0,w,h);
+  const dg=dimC.getContext('2d');
+  dg.setTransform(1,0,0,1,0,0);
+  dg.globalCompositeOperation='source-over';
+  dg.clearRect(0,0,w,h);
+  dg.fillStyle='rgba(5,8,25,.62)'; dg.fillRect(0,0,w,h);
+  dg.globalCompositeOperation='destination-out';
+  dg.drawImage(maskC,0,0);
+  g.drawImage(dimC,0,0);
+}
+function cutPos(e){
+  const r=CC.getBoundingClientRect();
+  return [(e.clientX-r.left)/r.width*CC.width,(e.clientY-r.top)/r.height*CC.height];
+}
+CC.addEventListener('pointerdown',e=>{
+  e.preventDefault(); cutting=true;
+  try{ CC.setPointerCapture(e.pointerId); }catch(_){}
+  maskStrokes.push({erase:cutMode==='erase',w:+$('brushSize').value,pts:[cutPos(e)]});
+  repaintCut();
+});
+CC.addEventListener('pointermove',e=>{
+  if(!cutting) return;
+  const s=maskStrokes[maskStrokes.length-1],p=cutPos(e),l=s.pts[s.pts.length-1];
+  if(Math.hypot(p[0]-l[0],p[1]-l[1])>2){ s.pts.push(p); repaintCut(); }
+});
+['pointerup','pointercancel'].forEach(ev=>CC.addEventListener(ev,()=>{ cutting=false; }));
+$('paintBtn').onclick=()=>setCutMode('paint');
+$('eraseBtn').onclick=()=>setCutMode('erase');
+$('cutUndoBtn').onclick=()=>{ maskStrokes.pop(); repaintCut(); };
+$('cutCancelBtn').onclick=closeCutout;
+$('cutOkBtn').onclick=()=>{
+  const d=maskC.getContext('2d').getImageData(0,0,maskC.width,maskC.height).data;
+  let any=false;
+  for(let i=0;i<d.length;i+=32){ if(d[i]>128){ any=true; break; } }
+  if(!any){ $('cutHint').textContent='⚠️ 请先涂抹人物和滑板，再点确认'; return; }
+  const sw=cutSrcFull.width,sh=cutSrcFull.height;
+  const res=document.createElement('canvas'); res.width=sw; res.height=sh;
+  const rg=res.getContext('2d');
+  rg.drawImage(cutSrcFull,0,0);
+  rg.globalCompositeOperation='destination-in';
+  rg.drawImage(maskC,0,0,sw,sh);
+  photoImg=trimAlpha(res,sw,sh);
+  savePhoto(); $('photoRow').hidden=false; closeCutout();
+  const st=$('cutoutStatus'); st.hidden=false; st.textContent='✅ 已保留你抠选的人物！';
+  setTimeout(()=>{ st.hidden=true; },3000);
 };
 $('startBtn').onclick=()=>{
   initAudio();
