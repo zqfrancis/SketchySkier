@@ -40,11 +40,8 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
 #flipPop.show{opacity:1;transform:scale(1);}
 #toast{position:absolute;top:32%;width:100%;text-align:center;font-size:30px;font-weight:800;color:#7dffcb;text-shadow:0 3px 12px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .3s;z-index:5;}
 #toast.show{opacity:1;}
-#controls{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom));left:0;right:0;display:flex;justify-content:space-between;padding:0 18px;z-index:6;}
-.cbtn{border:none;border-radius:22px;font-size:19px;font-weight:800;color:#fff;padding:20px 24px;min-width:126px;
- background:rgba(20,28,70,.78);border:2px solid rgba(255,255,255,.22);backdrop-filter:blur(6px);touch-action:none;}
-.cbtn:active,.cbtn.on{background:linear-gradient(135deg,#ff6ec7,#ff9a5e);transform:scale(.96);}
-#btnSpin{min-width:152px;}
+#tapHint{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;
+ font-size:14px;font-weight:700;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.55);pointer-events:none;z-index:6;opacity:.9;}
 #overScreen{background:rgba(6,10,28,.72);backdrop-filter:blur(8px);z-index:20;}
 .card{background:var(--panel);border:1px solid #2a3568;border-radius:22px;padding:28px 30px;text-align:center;max-width:86vw;box-shadow:0 20px 60px rgba(0,0,0,.5);}
 .card h2{margin:0 0 6px;font-size:30px;}
@@ -69,7 +66,7 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
   </div>
   <input id="nameInput" maxlength="12" placeholder="给滑手起个名字" />
   <button class="btn big" id="startBtn">开滑！⛷️</button>
-  <p class="hint">跳台会自动起飞，空中按住转圈，脚先落地才算数</p>
+  <p class="hint">轻点屏幕起跳，跳台会自动起飞，空中按住转圈，脚先落地才算数</p>
 </div>
 
 <!-- 游戏 -->
@@ -81,10 +78,7 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
   </div>
   <div id="flipPop"></div>
   <div id="toast"></div>
-  <div id="controls">
-    <button class="cbtn" id="btnJump">⬆ 起跳</button>
-    <button class="cbtn" id="btnSpin">🌀 按住转圈</button>
-  </div>
+  <div id="tapHint">轻点屏幕起跳 · 按住转圈</div>
 </div>
 
 <!-- 结算 -->
@@ -463,22 +457,25 @@ function render(){
   drawSlope();
   drawRamps();
   drawSkier();
-  drawSkier();
 }
 
-/* ---------- 游戏：操控 ---------- */
-$('btnJump').addEventListener('pointerdown',e=>{ e.preventDefault(); doJump(); });
-const spinBtn=$('btnSpin');
-spinBtn.addEventListener('pointerdown',e=>{ e.preventDefault(); G.spinHeld=true; spinBtn.classList.add('on'); });
+/* ---------- 游戏：操控（单手：轻点起跳，按住转圈） ---------- */
+let spinTimer=0;
+GC.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  doJump();
+  clearTimeout(spinTimer);
+  spinTimer=setTimeout(()=>{ G.spinHeld=true; },180);
+});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>
-  spinBtn.addEventListener(ev,()=>{ G.spinHeld=false; spinBtn.classList.remove('on'); }));
+  GC.addEventListener(ev,()=>{ clearTimeout(spinTimer); G.spinHeld=false; }));
 window.addEventListener('keydown',e=>{
   if($('gameScreen').hidden) return;
   if(e.code==='Space'){ e.preventDefault(); doJump(); }
-  if(e.code==='KeyF'&&!e.repeat){ G.spinHeld=true; spinBtn.classList.add('on'); }
+  if(e.code==='KeyF'&&!e.repeat){ G.spinHeld=true; }
 });
 window.addEventListener('keyup',e=>{
-  if(e.code==='KeyF'){ G.spinHeld=false; spinBtn.classList.remove('on'); }
+  if(e.code==='KeyF'){ G.spinHeld=false; }
 });
 $('retryBtn').onclick=()=>{ $('overScreen').hidden=true; startRun(); };
 $('redrawBtn').onclick=()=>{
