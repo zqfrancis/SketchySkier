@@ -50,20 +50,39 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
 .stat{display:flex;gap:26px;justify-content:center;margin-bottom:18px;}
 .stat div{font-size:13px;color:#9aa7d0;}
 .stat b{display:block;font-size:24px;color:#fff;}
+#cutoutStatus{color:#7dffcb;}
 </style>
+<script type="module">
+let _remover=null;
+window.cutoutPhoto=async(blob,onStage)=>{
+  if(!_remover){
+    onStage&&onStage('model');
+    const mod=await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm');
+    _remover=mod.removeBackground;
+  }
+  onStage&&onStage('cut');
+  return await _remover(blob);
+};
+</script>
 </head>
 <body>
 
 <!-- 画板 -->
 <div class="screen" id="drawScreen">
   <h1 class="title">涂鸦滑雪<span class="en">SKETCHY SKIER</span></h1>
-  <p class="sub">画出你的滑手（侧面站姿），脚下记得画块板 🏂</p>
+  <p class="sub">画出你的滑手，或上传照片自动抠出人物和滑板 🏂</p>
   <canvas id="drawCanvas"></canvas>
   <div class="colors" id="colorRow"></div>
   <div class="row">
     <button class="btn ghost" id="undoBtn">↩ 撤销</button>
+    <button class="btn ghost" id="uploadBtn">📷 上传照片</button>
     <button class="btn ghost" id="clearBtn">🗑 清空</button>
   </div>
+  <div class="row" id="photoRow" hidden>
+    <button class="btn ghost" id="removePhotoBtn">✕ 移除照片</button>
+  </div>
+  <p class="hint" id="cutoutStatus" hidden></p>
+  <input type="file" id="fileInput" accept="image/*" hidden />
   <input id="nameInput" maxlength="12" placeholder="给滑手起个名字" />
   <button class="btn big" id="startBtn">开滑！⛷️</button>
   <p class="hint">轻点屏幕起跳，跳台后有大片滞空区，空中按住转圈、松手即停，脚先落地才算数</p>
@@ -161,10 +180,18 @@ function paintStrokes(ctx,S){
     ctx.stroke();
   }
 }
+let photoImg=null; // 抠图后的透明 canvas
+function drawPhotoFit(ctx,S){
+  if(!photoImg) return;
+  const iw=photoImg.width, ih=photoImg.height;
+  const sc=Math.min(DS/iw,DS/ih), w=iw*sc, h=ih*sc;
+  ctx.drawImage(photoImg,(DS-w)/2*S,(DS-h)/2*S,w*S,h*S);
+}
 function redrawDraw(){
   const S = DC.width/DS;
   dctx.setTransform(1,0,0,1,0,0);
   dctx.fillStyle='#101736'; dctx.fillRect(0,0,DC.width,DC.height);
+  drawPhotoFit(dctx,S);
   dctx.strokeStyle='rgba(255,255,255,.07)'; dctx.lineWidth=1;
   dctx.beginPath(); dctx.moveTo(DC.width/2,0); dctx.lineTo(DC.width/2,DC.height); dctx.stroke();
   dctx.beginPath(); dctx.moveTo(0,DC.height*0.84); dctx.lineTo(DC.width,DC.height*0.84); dctx.stroke();
@@ -201,11 +228,74 @@ function defaultSkier(){
 let sprite=null, playerName='';
 function buildSprite(){
   const c=document.createElement('canvas'); c.width=DS; c.height=DS;
-  paintStrokes(c.getContext('2d'),1); sprite=c;
+  const x2=c.getContext('2d');
+  drawPhotoFit(x2,1);
+  paintStrokes(x2,1); sprite=c;
 }
+function trimAlpha(img,w,h){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x2=c.getContext('2d'); x2.drawImage(img,0,0);
+  const d=x2.getImageData(0,0,w,h).data;
+  let x0=w,y0=h,x1=-1,y1=-1;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    if(d[(y*w+x)*4+3]>12){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  }
+  if(x1<0) return c;
+  const m=6;
+  x0=Math.max(0,x0-m); y0=Math.max(0,y0-m); x1=Math.min(w-1,x1+m); y1=Math.min(h-1,y1+m);
+  const t=document.createElement('canvas'); t.width=x1-x0+1; t.height=y1-y0+1;
+  t.getContext('2d').drawImage(c,x0,y0,t.width,t.height,0,0,t.width,t.height);
+  return t;
+}
+function savePhoto(){
+  try{
+    if(!photoImg){ localStorage.removeItem('sketchyskier_photo'); return; }
+    const sc=Math.min(1,320/Math.max(photoImg.width,photoImg.height));
+    const c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(photoImg.width*sc)); c.height=Math.max(1,Math.round(photoImg.height*sc));
+    c.getContext('2d').drawImage(photoImg,0,0,c.width,c.height);
+    localStorage.setItem('sketchyskier_photo',c.toDataURL('image/png'));
+  }catch(e){}
+}
+$('uploadBtn').onclick=()=>$('fileInput').click();
+$('fileInput').addEventListener('change',async e=>{
+  const f=e.target.files[0]; e.target.value='';
+  if(!f) return;
+  const st=$('cutoutStatus'); st.hidden=false;
+  try{
+    st.textContent='⏳ 读取照片…';
+    let bmp;
+    try{ bmp=await createImageBitmap(f,{imageOrientation:'from-image'}); }
+    catch(_){ bmp=await createImageBitmap(f); }
+    const sc=Math.min(1,1024/Math.max(bmp.width,bmp.height));
+    const c=document.createElement('canvas');
+    c.width=Math.round(bmp.width*sc); c.height=Math.round(bmp.height*sc);
+    c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+    if(bmp.close) bmp.close();
+    const inBlob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.92));
+    if(typeof window.cutoutPhoto!=='function') throw new Error('no-module');
+    const outBlob=await window.cutoutPhoto(inBlob,stage=>{
+      st.textContent=stage==='model'?'⏳ 下载抠图模型（仅首次，约40MB）…':'✂️ 抠图中…';
+    });
+    const url=URL.createObjectURL(outBlob);
+    const img=await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=url; });
+    URL.revokeObjectURL(url);
+    photoImg=trimAlpha(img,img.naturalWidth,img.naturalHeight);
+    savePhoto(); redrawDraw();
+    $('photoRow').hidden=false;
+    st.textContent='✅ 抠图完成！可以直接开滑，或再加点涂鸦';
+    setTimeout(()=>{ st.hidden=true; },3000);
+  }catch(err){
+    console.warn('cutout failed',err);
+    st.textContent='❌ 抠图失败（需要联网下载模型），请重试';
+  }
+});
+$('removePhotoBtn').onclick=()=>{
+  photoImg=null; savePhoto(); $('photoRow').hidden=true; redrawDraw();
+};
 $('startBtn').onclick=()=>{
   initAudio();
-  if(!strokes.length) defaultSkier();
+  if(!strokes.length && !photoImg) defaultSkier();
   playerName = ($('nameInput').value||'').trim() || '无名滑手';
   buildSprite();
   try{
@@ -517,6 +607,12 @@ try{
   if(s) strokes=JSON.parse(s);
   const n=localStorage.getItem('sketchyskier_name');
   if(n) $('nameInput').value=n;
+  const p=localStorage.getItem('sketchyskier_photo');
+  if(p){
+    const im=new Image();
+    im.onload=()=>{ photoImg=trimAlpha(im,im.naturalWidth,im.naturalHeight); $('photoRow').hidden=false; redrawDraw(); };
+    im.src=p;
+  }
 }catch(e){}
 sizeDraw();
 window.addEventListener('resize',()=>{ if(!$('drawScreen').hidden) sizeDraw(); });
