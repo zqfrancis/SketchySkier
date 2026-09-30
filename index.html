@@ -66,7 +66,7 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
   </div>
   <input id="nameInput" maxlength="12" placeholder="给滑手起个名字" />
   <button class="btn big" id="startBtn">开滑！⛷️</button>
-  <p class="hint">轻点屏幕起跳，跳台会自动起飞，空中按住转圈，脚先落地才算数</p>
+  <p class="hint">轻点屏幕起跳，跳台后有大片滞空区，空中按住转圈、松手即停，脚先落地才算数</p>
 </div>
 
 <!-- 游戏 -->
@@ -237,11 +237,20 @@ function kickerLift(x){
   }
   return 0;
 }
-function groundY(x){ return baseY(x)+kickerLift(x); }
+const GAP=1800, GAP_DEPTH=480;
+function valleyDrop(x){
+  for(const rx of ramps){
+    const x0=rx+20;
+    if(x>x0 && x<x0+GAP){ const t=(x-x0)/GAP; return GAP_DEPTH*Math.pow(Math.sin(Math.PI*t),0.8); }
+  }
+  return 0;
+}
+function groundY(x){ return baseY(x)+kickerLift(x)+valleyDrop(x); }
 function slopeAt(x){ return (groundY(x+8)-groundY(x-8))/16; }
 
 /* ---------- 游戏：状态 ---------- */
 const G={ running:false };
+let spinTimer=0;
 function startRun(){
   Object.assign(G,{
     running:true, overShown:false,
@@ -267,6 +276,7 @@ function doJump(){
 
 function crash(dev){
   G.crashed=true; G.crashT=0; G.headFirst=dev>135; G.vy=-260;
+  G.spinHeld=false; clearTimeout(spinTimer);
   sfx.crash();
 }
 
@@ -367,7 +377,8 @@ function drawPhotoBG(){
 function updateCam(dt){
   const k=Math.min(1,7*dt);
   G.camX+=((G.x-W*0.35)-G.camX)*k;
-  G.camY+=((groundY(G.x)-H*0.55)-G.camY)*k;
+  const ty=(G.grounded&&!G.crashed)?(groundY(G.x)-H*0.55):(G.y-H*0.45);
+  G.camY+=(ty-G.camY)*k;
 }
 function updateHUD(){
   $('hudDist').textContent=Math.floor(G.x/METER);
@@ -459,8 +470,7 @@ function render(){
   drawSkier();
 }
 
-/* ---------- 游戏：操控（单手：轻点起跳，按住转圈） ---------- */
-let spinTimer=0;
+/* ---------- 游戏：操控（单手：轻点起跳，按住转圈，松手即停） ---------- */
 GC.addEventListener('pointerdown',e=>{
   e.preventDefault();
   doJump();
@@ -469,6 +479,8 @@ GC.addEventListener('pointerdown',e=>{
 });
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>
   GC.addEventListener(ev,()=>{ clearTimeout(spinTimer); G.spinHeld=false; }));
+['pointerup','pointercancel'].forEach(ev=>
+  window.addEventListener(ev,()=>{ clearTimeout(spinTimer); G.spinHeld=false; }));
 window.addEventListener('keydown',e=>{
   if($('gameScreen').hidden) return;
   if(e.code==='Space'){ e.preventDefault(); doJump(); }
