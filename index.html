@@ -101,7 +101,8 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
 <div class="screen" id="gameScreen" hidden>
   <canvas id="gameCanvas"></canvas>
   <div id="hud">
-    <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m</div>
+    <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h</div>
+    <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right">最佳<br><b><span id="hudBest">0</span></b> m</div>
   </div>
   <div id="flipPop"></div>
@@ -416,21 +417,22 @@ function sizeGame(){
 }
 window.addEventListener('resize',()=>{ if(!$('gameScreen').hidden) sizeGame(); });
 
-const METER=50, GRAV=1500, MAXV=950;
+const METER=50, GRAV=490, MAXV=800; // 50px=1m，重力≈9.8m/s²
+const LIP_SLOPE=0.70, RAMP_LEN=130; // 跳台唇边角≈35°
 const ramps=[];
 for(let i=0;i<30;i++) ramps.push(1500+i*2600+((i*7919)%600));
 
 function baseY(x){ return 260 + x*0.22 + 30*Math.sin(x*0.006) + 18*Math.sin(x*0.017+1.7); }
 function kickerLift(x){
   for(const rx of ramps){
-    if(x>rx-110 && x<rx+20){ const t=(x-(rx-110))/130; return -72*Math.sin(Math.PI*t); }
+    if(x>rx-RAMP_LEN && x<rx){ const t=(x-(rx-RAMP_LEN))/RAMP_LEN; return -(LIP_SLOPE*RAMP_LEN/1.2)*Math.pow(t,1.2); }
   }
   return 0;
 }
 const GAP=1800, GAP_DEPTH=480;
 function valleyDrop(x){
   for(const rx of ramps){
-    const x0=rx+20;
+    const x0=rx;
     if(x>x0 && x<x0+GAP){ const t=(x-x0)/GAP; return GAP_DEPTH*Math.pow(Math.sin(Math.PI*t),0.8); }
   }
   return 0;
@@ -446,11 +448,12 @@ function startRun(){
     running:true, overShown:false,
     x:0, px:0, y:groundY(0), vx:300, vy:0,
     angle:0, tilt:0, airRot:0, flips:0,
-    grounded:true, spinHeld:false,
+    grounded:true, spinHeld:false, airT:0,
     crashed:false, crashT:0, headFirst:false,
     camX:-window.innerWidth*0.35, camY:groundY(0)-window.innerHeight*0.55,
     best:+(localStorage.getItem('sketchyskier_best')||0)
   });
+  parts.length=0; trail.length=0; initSnow();
   $('hudName').textContent=playerName;
   $('hudBest').textContent=G.best;
   $('hudDist').textContent='0';
@@ -460,13 +463,15 @@ function startRun(){
 
 function doJump(){
   if(!G.running||G.crashed||!G.grounded) return;
-  G.grounded=false; G.vy=-520; G.airRot=0; G.flips=0;
+  G.grounded=false; G.vy=-320; G.airRot=0; G.flips=0; G.airT=0;
+  spray(G.x,G.y,4,180);
   sfx.jump();
 }
 
 function crash(dev){
   G.crashed=true; G.crashT=0; G.headFirst=dev>135; G.vy=-260;
   G.spinHeld=false; clearTimeout(spinTimer);
+  spray(G.x,G.y,22,380);
   sfx.crash();
 }
 
@@ -486,15 +491,16 @@ function step(dt){
     const gy=groundY(G.x);
     G.vy=(gy-G.y)/dt; G.y=gy;
     const s=slopeAt(G.x);
-    G.vx+=(16+70*s)*dt;
+    G.vx+=(12+490*s)*dt; // 重力沿坡分量：陡则加速、缓则减速
     G.vx=Math.max(220,Math.min(MAXV,G.vx));
     for(const rx of ramps){
-      if(prevX<rx+18 && G.x>=rx+18){
+      if(prevX<rx && G.x>=rx){
         G.grounded=false;
-        G.vy=-(360+G.vx*0.38);
-        G.airRot=0; G.flips=0;
+        G.vy=-G.vx*LIP_SLOPE*0.98; // 沿唇边切线起跳：水平分量保持，垂直分量由唇边角度决定
+        G.airRot=0; G.flips=0; G.airT=0;
         $('flipPop').classList.remove('show');
         sfx.launch();
+        spray(G.x,G.y-20,6,240);
         break;
       }
     }
@@ -502,7 +508,7 @@ function step(dt){
     G.tilt+=(target-G.tilt)*Math.min(1,10*dt);
     G.angle=G.tilt;
   }else{
-    G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt;
+    G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt; G.airT+=dt;
     if(G.spinHeld){ G.angle+=500*dt; G.airRot+=500*dt; }
     const f=Math.floor(Math.abs(G.airRot)/360);
     if(f>G.flips){ G.flips=f; sfx.flip(); showFlip(f); }
@@ -513,6 +519,7 @@ function step(dt){
         G.grounded=true; G.y=gy; G.vx*=0.94;
         if(dev<=16){ G.vx=Math.min(MAXV,G.vx*1.12); toast('完美落地！✨'); sfx.perfect(); }
         else sfx.land();
+        spray(G.x,gy,dev<=16?18:10,dev<=16?340:260);
         G.angle=0; G.tilt=0; G.airRot=0; G.vy=0; G.flips=0;
         $('flipPop').classList.remove('show');
       }else{
@@ -551,6 +558,66 @@ function showOver(){
   setTimeout(()=>{ $('overScreen').hidden=false; },350);
 }
 
+/* ---------- 游戏：粒子 / 雪 / 刻滑痕 ---------- */
+const parts=[];
+function spray(wx,wy,n,spd){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, v=spd*(0.4+Math.random()*0.8);
+    parts.push({x:wx,y:wy,vx:Math.cos(a)*v,vy:Math.sin(a)*v-spd*0.5,life:0.6+Math.random()*0.5,t:0,r:2+Math.random()*3.5});
+  }
+  if(parts.length>240) parts.splice(0,parts.length-240);
+}
+function stepParts(dt){
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i]; p.t+=dt;
+    if(p.t>=p.life){ parts.splice(i,1); continue; }
+    p.vy+=GRAV*0.7*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+  }
+}
+function drawParts(){
+  for(const p of parts){
+    const a=1-p.t/p.life;
+    gx.fillStyle='rgba(255,255,255,'+(a*0.85).toFixed(2)+')';
+    gx.beginPath(); gx.arc(p.x-G.camX,p.y-G.camY,p.r*(0.5+a*0.7),0,7); gx.fill();
+  }
+}
+const snow=[];
+function initSnow(){
+  snow.length=0;
+  for(let i=0;i<70;i++) snow.push({x:Math.random(),y:Math.random(),r:1+Math.random()*2.6,v:30+Math.random()*70,ph:Math.random()*7});
+}
+function drawSnow(dt){
+  gx.fillStyle='#fff';
+  for(const f of snow){
+    f.y+=f.v*dt/H; f.ph+=dt; f.x+=Math.sin(f.ph)*0.0006;
+    if(f.y>1){ f.y=0; f.x=Math.random(); }
+    gx.globalAlpha=+(0.3+0.45*((f.r-1)/2.6)).toFixed(2);
+    gx.beginPath(); gx.arc(f.x*W,f.y*H,f.r,0,7); gx.fill();
+  }
+  gx.globalAlpha=1;
+}
+const trail=[];
+function stepTrail(dt){
+  for(let i=trail.length-1;i>=0;i--){ trail[i].age+=dt; if(trail[i].age>1.4) trail.splice(i,1); }
+  if(G.grounded&&!G.crashed&&G.running){
+    const last=trail[trail.length-1];
+    if(!last||Math.abs(G.x-last.x)>26){
+      trail.push({x:G.x,y:groundY(G.x),age:0});
+      if(trail.length>60) trail.shift();
+    }
+  }
+}
+function drawTrail(){
+  gx.lineCap='round';
+  for(let i=1;i<trail.length;i++){
+    const a=trail[i],b=trail[i-1],al=0.5*(1-a.age/1.4);
+    if(al<=0) continue;
+    gx.strokeStyle='rgba(190,220,255,'+al.toFixed(2)+')';
+    gx.lineWidth=Math.max(1,10*(1-a.age/2.5));
+    gx.beginPath(); gx.moveTo(b.x-G.camX,b.y-G.camY+5); gx.lineTo(a.x-G.camX,a.y-G.camY+5); gx.stroke();
+  }
+}
+
 /* ---------- 游戏：渲染 ---------- */
 const bgImg=new Image(); let bgReady=false;
 bgImg.onload=()=>{ bgReady=true; };
@@ -572,6 +639,10 @@ function updateCam(dt){
 }
 function updateHUD(){
   $('hudDist').textContent=Math.floor(G.x/METER);
+  $('hudSpd').textContent=Math.round(Math.hypot(G.vx,G.vy)/METER*3.6);
+  const air=!G.grounded&&!G.crashed&&G.running&&!G.overShown;
+  $('hudAirBox').hidden=!air;
+  if(air) $('hudAir').textContent=G.airT.toFixed(1);
 }
 
 function clouds(){
@@ -611,26 +682,25 @@ function drawSlope(){
 }
 function drawRamps(){
   for(const rx of ramps){
-    const sx=rx-G.camX;
-    if(sx<-180||sx>W+180) continue;
-    const gyTop=groundY(rx)-G.camY;
+    const sx=rx-G.camX, x0=rx-RAMP_LEN;
+    if(sx<-RAMP_LEN-40||sx>W+RAMP_LEN+40) continue;
     gx.save();
     gx.beginPath();
-    gx.moveTo(sx-110, groundY(rx-110)-G.camY);
-    for(let x=rx-110;x<=rx+20;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
-    gx.lineTo(sx+20, groundY(rx+20)-G.camY+110);
-    gx.lineTo(sx-110, groundY(rx-110)-G.camY+110);
+    gx.moveTo(sx-RAMP_LEN, groundY(x0)-G.camY);
+    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
+    gx.lineTo(sx, groundY(rx)-G.camY+120);
+    gx.lineTo(sx-RAMP_LEN, groundY(x0)-G.camY+120);
     gx.closePath(); gx.clip();
-    for(let i=0;i<10;i++){
+    for(let i=0;i<12;i++){
       gx.fillStyle=i%2 ? '#ff5e5e' : '#ffffff';
-      gx.fillRect(sx-120+i*16, -300, 9, H+700);
+      gx.fillRect(sx-RAMP_LEN-12+i*16, -300, 9, H+700);
     }
     gx.restore();
     gx.strokeStyle='#c23b3b'; gx.lineWidth=3; gx.beginPath();
-    gx.moveTo(sx-110, groundY(rx-110)-G.camY);
-    for(let x=rx-110;x<=rx+20;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
+    gx.moveTo(sx-RAMP_LEN, groundY(x0)-G.camY);
+    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
     gx.stroke();
-    const fx=sx+14, fy=groundY(rx+14)-G.camY;
+    const fx=sx-4, fy=groundY(rx-4)-G.camY;
     gx.strokeStyle='#333'; gx.lineWidth=3;
     gx.beginPath(); gx.moveTo(fx,fy); gx.lineTo(fx,fy-48); gx.stroke();
     gx.fillStyle='#ff5e5e';
@@ -639,15 +709,17 @@ function drawRamps(){
 }
 function drawSkier(){
   const sx=G.x-G.camX, sy=G.y-G.camY;
-  gx.fillStyle='rgba(30,50,90,.18)';
-  gx.beginPath(); gx.ellipse(sx, groundY(G.x)-G.camY+6, 34, 8, 0, 0, 7); gx.fill();
+  const hgt=Math.max(0,groundY(G.x)-G.y);
+  const shS=1+Math.min(1.6,hgt/380), shA=Math.max(0.04,0.2-hgt/2600);
+  gx.fillStyle='rgba(30,50,90,'+shA.toFixed(3)+')';
+  gx.beginPath(); gx.ellipse(sx, groundY(G.x)-G.camY+6, 34*shS, 8*shS, 0, 0, 7); gx.fill();
   gx.save();
   gx.translate(sx, sy-46);
   gx.rotate(G.angle*Math.PI/180);
   if(sprite) gx.drawImage(sprite,-46,-46,92,92);
   gx.restore();
 }
-function render(){
+function render(dt){
   gx.setTransform(DPR,0,0,DPR,0,0);
   if(bgReady){ drawPhotoBG(); }
   else{
@@ -656,8 +728,11 @@ function render(){
     gx.fillStyle=sky; gx.fillRect(0,0,W,H);
   }
   drawSlope();
+  drawTrail();
   drawRamps();
   drawSkier();
+  drawParts();
+  drawSnow(dt||0.016);
 }
 
 /* ---------- 游戏：操控（单手：轻点起跳，按住转圈，松手即停） ---------- */
@@ -696,8 +771,9 @@ function loop(t){
     const n=2, h=dt/n;
     for(let i=0;i<n;i++) step(h);
   }
+  stepParts(dt); stepTrail(dt);
   updateCam(dt);
-  render();
+  render(dt);
   updateHUD();
 }
 
