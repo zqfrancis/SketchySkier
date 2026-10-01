@@ -112,11 +112,11 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h</div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right">最佳<br><b><span id="hudBest">0</span></b> m</div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">v0.10</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">v0.11</div>
   </div>
   <div id="flipPop"></div>
   <div id="toast"></div>
-  <div id="tapHint">轻点屏幕起跳 · 按住转圈</div>
+  <div id="tapHint">轻点起跳 · 空中按住转圈，松开即停，再按继续</div>
 </div>
 
 <!-- 结算 -->
@@ -451,7 +451,7 @@ function slopeAt(x){ return (groundY(x+8)-groundY(x-8))/16; }
 
 /* ---------- 游戏：状态 ---------- */
 const G={ running:false };
-let spinTimer=0;
+let spinTimer=0, pressing=false;
 function startRun(){
   Object.assign(G,{
     running:true, overShown:false,
@@ -507,6 +507,7 @@ function step(dt){
         G.grounded=false;
         G.vy=-G.vx*LIP_SLOPE*0.98; // 沿唇边切线起跳：水平分量保持，垂直分量由唇边角度决定
         G.airRot=0; G.flips=0; G.airT=0;
+        if(pressing) G.spinHeld=true; // 地面按住不放直接飞出去：空中保持转圈
         $('flipPop').classList.remove('show');
         sfx.launch();
         spray(G.x,G.y-20,6,240);
@@ -829,17 +830,23 @@ function render(dt){
   drawSnow(dt||0.016);
 }
 
-/* ---------- 游戏：操控（单手：轻点起跳，按住转圈，松手即停） ---------- */
+/* ---------- 游戏：操控（单手：轻点起跳，按住转圈，松手即停；空中再按直接转） ---------- */
 GC.addEventListener('pointerdown',e=>{
   e.preventDefault();
+  pressing=true;
+  const wasAirborne=!G.grounded; // 先记状态：doJump()会把grounded置false
   doJump();
   clearTimeout(spinTimer);
-  spinTimer=setTimeout(()=>{ G.spinHeld=true; },180);
+  if(wasAirborne&&!G.crashed&&G.running){
+    G.spinHeld=true; // 空中按下立刻转：空中没有点跳动作，无需等180ms区分
+  }else{
+    spinTimer=setTimeout(()=>{ G.spinHeld=true; },180);
+  }
 });
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>
-  GC.addEventListener(ev,()=>{ clearTimeout(spinTimer); G.spinHeld=false; }));
+  GC.addEventListener(ev,()=>{ pressing=false; clearTimeout(spinTimer); G.spinHeld=false; }));
 ['pointerup','pointercancel'].forEach(ev=>
-  window.addEventListener(ev,()=>{ clearTimeout(spinTimer); G.spinHeld=false; }));
+  window.addEventListener(ev,()=>{ pressing=false; clearTimeout(spinTimer); G.spinHeld=false; }));
 window.addEventListener('keydown',e=>{
   if($('gameScreen').hidden) return;
   if(e.code==='Space'){ e.preventDefault(); doJump(); }
