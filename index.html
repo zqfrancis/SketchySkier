@@ -14,8 +14,14 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);co
 canvas{display:block;}
 .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;z-index:10;}
 [hidden]{display:none !important;}
-h1.title{margin:0;font-size:30px;letter-spacing:1px;text-align:center;}
-h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent);margin-top:6px;}
+#drawScreen{background:linear-gradient(180deg,#1668e8 0%,#3f97ff 45%,#9fd0ff 78%,#dceeff 100%);}
+h1.title{margin:0;font-size:42px;font-weight:900;font-style:italic;letter-spacing:1px;text-align:center;color:#fff;
+ text-shadow:0 3px 0 #0d47b8,0 8px 22px rgba(0,40,120,.45);}
+h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;color:#ffd93b;margin-top:8px;text-shadow:0 2px 0 #a86a00;}
+#drawScreen .sub{color:#eaf4ff;text-shadow:0 1px 6px rgba(0,60,140,.5);}
+.btn.big{font-size:22px;padding:16px 62px;color:#3a2600;font-weight:900;
+ background:linear-gradient(180deg,#ffd93b,#ffb800);box-shadow:0 6px 0 #b87a00,0 12px 26px rgba(0,40,120,.35);}
+.btn.big:active{transform:translateY(4px);box-shadow:0 2px 0 #b87a00,0 6px 14px rgba(0,40,120,.3);}
 .sub{color:#9aa7d0;font-size:14px;margin:0;text-align:center;}
 #drawCanvas{width:min(84vw,340px);aspect-ratio:1/1;border-radius:18px;background:#101736;
  border:2px solid #2a3568;box-shadow:0 8px 40px rgba(94,231,255,.12);touch-action:none;cursor:crosshair;}
@@ -33,11 +39,13 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
 #gameScreen{padding:0;justify-content:flex-start;}
 #gameCanvas{position:absolute;inset:0;width:100%;height:100%;}
 #hud{position:absolute;top:calc(10px + env(safe-area-inset-top));left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:5;}
-.hudBox{background:rgba(10,16,38,.62);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(6px);border-radius:12px;padding:8px 12px;font-size:14px;line-height:1.5;}
-.hudBox b{font-size:20px;color:var(--accent);}
-#flipPop{position:absolute;top:20%;width:100%;text-align:center;font-size:52px;font-weight:900;color:#fff;
- text-shadow:0 4px 0 #ff6ec7,0 8px 24px rgba(0,0,0,.35);pointer-events:none;opacity:0;transform:scale(.6);transition:opacity .15s,transform .15s;z-index:5;}
-#flipPop.show{opacity:1;transform:scale(1);}
+.hudBox{background:rgba(8,22,55,.55);border:2px solid rgba(255,255,255,.35);backdrop-filter:blur(6px);border-radius:16px;padding:8px 14px;font-size:14px;line-height:1.5;box-shadow:0 4px 14px rgba(0,25,70,.28);}
+.hudBox b{font-size:22px;color:#ffd93b;font-weight:900;}
+.hudBox span{color:#fff;font-weight:700;}
+#flipPop{position:absolute;top:20%;width:100%;text-align:center;font-size:56px;font-weight:900;font-style:italic;color:#ffd93b;
+ text-shadow:0 3px 0 #a86a00,0 7px 0 rgba(120,60,0,.35),0 12px 30px rgba(0,0,0,.5);pointer-events:none;opacity:0;z-index:5;}
+#flipPop.show{animation:pop .45s cubic-bezier(.2,1.6,.4,1) forwards;}
+@keyframes pop{0%{opacity:0;transform:scale(.4) rotate(-5deg);}60%{opacity:1;transform:scale(1.18) rotate(2deg);}100%{opacity:1;transform:scale(1) rotate(0);}}
 #toast{position:absolute;top:32%;width:100%;text-align:center;font-size:30px;font-weight:800;color:#7dffcb;text-shadow:0 3px 12px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .3s;z-index:5;}
 #toast.show{opacity:1;}
 #tapHint{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;
@@ -104,7 +112,7 @@ h1.title .en{display:block;font-size:15px;letter-spacing:5px;color:var(--accent)
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h</div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right">最佳<br><b><span id="hudBest">0</span></b> m</div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">v0.9.2</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">v0.10</div>
   </div>
   <div id="flipPop"></div>
   <div id="toast"></div>
@@ -632,6 +640,40 @@ function drawPhotoBG(){
   const s=Math.max((W+PAR_MAX+2)/iw,(H+PAR_MAX+2)/ih); // 覆盖屏幕+视差余量
   const dw=iw*s, dh=ih*s;
   gx.drawImage(bgImg,-px,-py,dw,dh);
+  // 卡通调色（贴合效果图）：顶部高饱和蓝天 + 右上太阳光晕
+  const tg=gx.createLinearGradient(0,0,0,H*0.5);
+  tg.addColorStop(0,'rgba(25,110,255,.30)'); tg.addColorStop(1,'rgba(25,110,255,0)');
+  gx.fillStyle=tg; gx.fillRect(0,0,W,H*0.5);
+  const sg=gx.createRadialGradient(W*0.84,H*0.10,10,W*0.84,H*0.10,H*0.30);
+  sg.addColorStop(0,'rgba(255,250,220,.8)'); sg.addColorStop(0.25,'rgba(255,244,200,.32)'); sg.addColorStop(1,'rgba(255,244,200,0)');
+  gx.fillStyle=sg; gx.fillRect(0,0,W,H*0.45);
+}
+/* ---------- 卡通松树（两侧视差，不挡玩法区） ---------- */
+function hash1(n){ const s=Math.sin(n*127.1)*43758.5453; return s-Math.floor(s); }
+function pine(sx,baseY,s,shade){
+  gx.fillStyle='#6b4a2f';
+  gx.fillRect(sx-3*s,baseY-16*s,6*s,16*s);
+  const cols=shade?['#2a6e8f','#337f9f','#3b90ad']:['#1e7a4c','#27945e','#32b06d'];
+  for(let i=0;i<3;i++){
+    const w=(36-i*9)*s, y0=baseY-12*s-i*24*s, h=32*s;
+    gx.fillStyle=cols[i];
+    gx.beginPath(); gx.moveTo(sx-w/2,y0); gx.lineTo(sx+w/2,y0); gx.lineTo(sx,y0-h); gx.closePath(); gx.fill();
+    gx.fillStyle=shade?'rgba(220,235,245,.85)':'rgba(255,255,255,.92)';
+    gx.beginPath(); gx.moveTo(sx-w*0.20,y0-h+2*s); gx.lineTo(sx+w*0.20,y0-h+2*s); gx.lineTo(sx,y0-h-9*s); gx.closePath(); gx.fill();
+  }
+}
+function drawPinesFar(){ pinesLayer(0.10,560,0.55,0.9,true); }
+function drawPinesNear(){ pinesLayer(0.22,420,0.9,1.5,false); }
+function pinesLayer(par,spacing,sMin,sMax,shade){
+  const off=G.camX*par, n0=Math.floor((off-200)/spacing), n1=Math.ceil((off+W+200)/spacing);
+  for(let k=n0;k<=n1;k++){
+    const sx=k*spacing-off;
+    if(sx>W*0.24&&sx<W*0.76) continue;
+    const s=sMin+hash1(k*3.7+par*91)*(sMax-sMin);
+    const baseY=groundY(sx+G.camX)-G.camY;
+    if(baseY<-80||baseY>H+120) continue;
+    pine(sx,baseY+4,s,shade);
+  }
 }
 function updateCam(dt){
   const k=Math.min(1,7*dt);
@@ -673,16 +715,61 @@ function ridge(par,color,baseY0,amp,seed){
 }
 function drawSlope(){
   const g=gx.createLinearGradient(0,H*0.35,0,H);
-  g.addColorStop(0,'#ffffff'); g.addColorStop(1,'#c9dcf7');
+  g.addColorStop(0,'#ffffff'); g.addColorStop(1,'#d9e8ff');
   gx.fillStyle=g; gx.beginPath(); gx.moveTo(-60,H+60);
   for(let sx=-60;sx<=W+60;sx+=14) gx.lineTo(sx, groundY(sx+G.camX)-G.camY);
   gx.lineTo(W+60,H+60); gx.closePath(); gx.fill();
-  gx.strokeStyle='rgba(140,170,220,.35)'; gx.lineWidth=2; gx.beginPath();
+  // 卡通雪面：亮边 + 淡蓝阴影线
+  gx.lineCap='round';
+  gx.strokeStyle='rgba(255,255,255,.95)'; gx.lineWidth=3; gx.beginPath();
   for(let sx=-60;sx<=W+60;sx+=14){
-    const y=groundY(sx+G.camX)-G.camY+26;
+    const y=groundY(sx+G.camX)-G.camY;
     if(sx===-60) gx.moveTo(sx,y); else gx.lineTo(sx,y);
   }
   gx.stroke();
+  gx.strokeStyle='rgba(130,170,235,.40)'; gx.lineWidth=8; gx.beginPath();
+  for(let sx=-60;sx<=W+60;sx+=14){
+    const y=groundY(sx+G.camX)-G.camY+11;
+    if(sx===-60) gx.moveTo(sx,y); else gx.lineTo(sx,y);
+  }
+  gx.stroke();
+  // 雪面闪点
+  const t0=Date.now()/400;
+  for(let k=0;k<40;k++){
+    const wx=k*397+hash1(k*1.3)*200, sx=wx-G.camX;
+    if(sx<-10||sx>W+10) continue;
+    const sy=groundY(wx)-G.camY+14+hash1(k*7.7)*70;
+    if(sy<0||sy>H) continue;
+    const tw=Math.abs(Math.sin(t0+hash1(k*3.1)*6.28));
+    gx.globalAlpha=0.2+0.6*tw;
+    gx.fillStyle='#ffffff';
+    const r=1+hash1(k*5.3)*1.6;
+    gx.fillRect(sx-r,sy-r,r*2,r*2);
+  }
+  gx.globalAlpha=1;
+}
+/* ---------- 跳跃弧线（腾空时预测轨迹，效果图风格） ---------- */
+function drawJumpArc(){
+  if(G.grounded||G.crashed||!G.running||G.overShown) return;
+  let x=G.x,y=G.y,vx=G.vx,vy=G.vy;
+  const dt=1/30, pts=[[x,y]];
+  for(let i=0;i<90;i++){
+    vy+=GRAV*dt; x+=vx*dt; y+=vy*dt;
+    pts.push([x,y]);
+    if(y>=groundY(x)&&vy>0) break;
+  }
+  gx.lineCap='round'; gx.lineWidth=5;
+  for(let i=1;i<pts.length;i++){
+    const a=pts[i-1],b=pts[i],f=i/pts.length;
+    gx.strokeStyle='rgba(255,255,255,'+(0.75*(1-f*0.6)).toFixed(2)+')';
+    gx.beginPath();
+    gx.moveTo(a[0]-G.camX,a[1]-G.camY);
+    gx.lineTo(b[0]-G.camX,b[1]-G.camY);
+    gx.stroke();
+  }
+  const l=pts[pts.length-1];
+  gx.strokeStyle='rgba(255,255,255,.85)'; gx.lineWidth=3;
+  gx.beginPath(); gx.ellipse(l[0]-G.camX,groundY(l[0])-G.camY,26,8,0,0,7); gx.stroke();
 }
 function drawRamps(){
   for(const rx of ramps){
@@ -731,10 +818,13 @@ function render(dt){
     sky.addColorStop(0,'#5f9df7'); sky.addColorStop(.55,'#a9ccf7'); sky.addColorStop(1,'#e8f2ff');
     gx.fillStyle=sky; gx.fillRect(0,0,W,H);
   }
+  drawPinesFar();
   drawSlope();
   drawTrail();
   drawRamps();
+  drawJumpArc();
   drawSkier();
+  drawPinesNear();
   drawParts();
   drawSnow(dt||0.016);
 }
