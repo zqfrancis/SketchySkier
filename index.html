@@ -42,10 +42,10 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
 .hudBox{background:rgba(8,22,55,.55);border:2px solid rgba(255,255,255,.35);backdrop-filter:blur(6px);border-radius:16px;padding:8px 14px;font-size:14px;line-height:1.5;box-shadow:0 4px 14px rgba(0,25,70,.28);}
 .hudBox b{font-size:22px;color:#ffd93b;font-weight:900;}
 .hudBox span{color:#fff;font-weight:700;}
-#flipPop{position:absolute;top:20%;width:100%;text-align:center;font-size:56px;font-weight:900;font-style:italic;color:#ffd93b;
- text-shadow:0 3px 0 #a86a00,0 7px 0 rgba(120,60,0,.35),0 12px 30px rgba(0,0,0,.5);pointer-events:none;opacity:0;z-index:5;}
-#flipPop.show{animation:pop .45s cubic-bezier(.2,1.6,.4,1) forwards;}
-@keyframes pop{0%{opacity:0;transform:scale(.4) rotate(-5deg);}60%{opacity:1;transform:scale(1.18) rotate(2deg);}100%{opacity:1;transform:scale(1) rotate(0);}}
+#hudTier{font-size:11px;font-weight:900;letter-spacing:2px;color:#7dffcb;margin-top:2px;}
+#hudCombo{color:#ff9a5e;font-weight:900;font-size:15px;margin-top:2px;animation:comboPulse .5s ease infinite alternate;}
+@keyframes comboPulse{from{transform:scale(1);}to{transform:scale(1.12);}}
+.hudBestLine{font-size:11px;color:#9aa7d0;margin-top:2px;}
 #toast{position:absolute;top:32%;width:100%;text-align:center;font-size:30px;font-weight:800;color:#7dffcb;text-shadow:0 3px 12px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .3s;z-index:5;}
 #toast.show{opacity:1;}
 #tapHint{position:absolute;bottom:calc(14px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;
@@ -109,12 +109,11 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
 <div class="screen" id="gameScreen" hidden>
   <canvas id="gameCanvas"></canvas>
   <div id="hud">
-    <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h</div>
+    <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
-    <div class="hudBox" style="text-align:right">最佳<br><b><span id="hudBest">0</span></b> m</div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">v0.11</div>
+    <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.2</div>
   </div>
-  <div id="flipPop"></div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 空中按住转圈，松开即停，再按继续</div>
 </div>
@@ -122,16 +121,18 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
 <!-- 结算 -->
 <div class="screen" id="overScreen" hidden>
   <div class="card">
-    <h2 id="overTitle">摔倒了！</h2>
-    <div class="big"><span id="overDist">0</span> m</div>
+    <h2 id="overTitle">CRASH!</h2>
+    <div style="font-size:13px;color:#9aa7d0;letter-spacing:3px">SCORE</div>
+    <div class="big"><span id="overScore">0</span></div>
     <div class="stat">
-      <div>转体<b id="overFlips">x0</b></div>
-      <div>历史最佳<b><span id="overBest">0</span> m</b></div>
+      <div>BEST<b><span id="overBest">0</span></b></div>
+      <div>BEST TRICK<b id="overTrick">—</b></div>
+      <div>DISTANCE<b><span id="overDist">0</span> m</b></div>
     </div>
     <p id="overSub"></p>
     <div class="row">
-      <button class="btn big" id="retryBtn">再来一局</button>
-      <button class="btn ghost" id="redrawBtn">重新画一个</button>
+      <button class="btn big" id="retryBtn">RETRY</button>
+      <button class="btn ghost" id="redrawBtn">REDRAW RIDER</button>
     </div>
   </div>
 </div>
@@ -165,7 +166,10 @@ const sfx={
   land(){ beep(180,90,.12,'triangle',.13); },
   perfect(){ beep(660,1320,.25,'sine',.11); },
   crash(){ beep(220,40,.4,'sawtooth',.15); },
-  flip(){ beep(880,1174,.12,'sine',.08); }
+  flip(){ beep(880,1174,.12,'sine',.08); },
+  trick(i){ beep(660+i*130,990+i*130,.14,'sine',.09); },
+  combo(){ beep(520,1560,.3,'triangle',.1); },
+  tier(){ beep(440,660,.16,'triangle',.08); }
 };
 document.addEventListener('pointerdown', initAudio, {passive:true});
 document.addEventListener('gesturestart', e=>e.preventDefault());
@@ -427,21 +431,28 @@ function sizeGame(){
 window.addEventListener('resize',()=>{ if(!$('gameScreen').hidden) sizeGame(); });
 
 const METER=50, GRAV=490, MAXV=800; // 50px=1m，重力≈9.8m/s²
-const LIP_SLOPE=0.70, RAMP_LEN=130; // 跳台唇边角≈35°
+// 跳台按距离分级：越远越大、越密（BEGINNER/MOUNTAIN/EXTREME）
+function tierAtM(m){ return m<500?0 : m<1500?1 : 2; }
+const TIER_NAMES=['BEGINNER','MOUNTAIN','EXTREME'];
+const TIER_CFG=[{len:110,slope:0.62,spacing:2600},{len:140,slope:0.72,spacing:2300},{len:170,slope:0.80,spacing:2000}];
 const ramps=[];
-for(let i=0;i<30;i++) ramps.push(1500+i*2600+((i*7919)%600));
+{ let x=1500,i=0;
+  while(x<170000){ const c=TIER_CFG[tierAtM(x/METER)]; ramps.push({x,len:c.len,slope:c.slope}); x+=c.spacing+((i*7919)%600); i++; } }
+// 转体里程碑：[度数, 基础分]
+const TRICK_MS=[[180,100],[360,300],[540,500],[720,800],[900,1000],[1080,1300]];
+const fmt=n=>Math.round(n).toLocaleString('en-US');
 
 function baseY(x){ return 260 + x*0.22 + 30*Math.sin(x*0.006) + 18*Math.sin(x*0.017+1.7); }
 function kickerLift(x){
-  for(const rx of ramps){
-    if(x>rx-RAMP_LEN && x<rx){ const t=(x-(rx-RAMP_LEN))/RAMP_LEN; return -(LIP_SLOPE*RAMP_LEN/1.2)*Math.pow(t,1.2); }
+  for(const r of ramps){
+    if(x>r.x-r.len && x<r.x){ const t=(x-(r.x-r.len))/r.len; return -(r.slope*r.len/1.2)*Math.pow(t,1.2); }
   }
   return 0;
 }
 const GAP=1800, GAP_DEPTH=480;
 function valleyDrop(x){
-  for(const rx of ramps){
-    const x0=rx;
+  for(const r of ramps){
+    const x0=r.x;
     if(x>x0 && x<x0+GAP){ const t=(x-x0)/GAP; return GAP_DEPTH*Math.pow(Math.sin(Math.PI*t),0.8); }
   }
   return 0;
@@ -460,32 +471,43 @@ function startRun(){
     grounded:true, spinHeld:false, airT:0,
     crashed:false, crashT:0, headFirst:false,
     camX:-window.innerWidth*0.35, camY:groundY(0)-window.innerHeight*0.55, camOff:0.55,
-    best:+(localStorage.getItem('sketchyskier_best')||0)
+    best:+(localStorage.getItem('sketchyskier_best')||0),
+    bestScore:+(localStorage.getItem('sketchyskier_best_score')||0),
+    score:0, combo:1, runBestTrick:0, tricksThisJump:0, nextMS:0,
+    shake:0, stretch:0, tier:0
   });
-  parts.length=0; trail.length=0; initSnow();
+  parts.length=0; trail.length=0; floaters.length=0; initSnow();
   $('hudName').textContent=playerName;
-  $('hudBest').textContent=G.best;
-  $('hudDist').textContent='0';
-  $('flipPop').classList.remove('show');
+  $('hudBestScore').textContent=fmt(G.bestScore);
+  $('hudDist').textContent='0'; $('hudScore').textContent='0';
+  $('hudTier').textContent=TIER_NAMES[0]; $('hudCombo').hidden=true;
   hideToast();
 }
 
 function doJump(){
   if(!G.running||G.crashed||!G.grounded) return;
-  G.grounded=false; G.vy=-320; G.airRot=0; G.flips=0; G.airT=0;
-  spray(G.x,G.y,4,180);
+  G.grounded=false; G.vy=-320; G.airRot=0; G.flips=0; G.airT=0; G.nextMS=0; G.tricksThisJump=0;
+  G.stretch=1;
+  spray(G.x,G.y,10,260);
+  addFloater({world:true,x:G.x,y:G.y-130,txt:'JUMP!',color:'#7dffcb',life:0.7});
   sfx.jump();
 }
 
 function crash(dev){
   G.crashed=true; G.crashT=0; G.headFirst=dev>135; G.vy=-260;
   G.spinHeld=false; clearTimeout(spinTimer);
+  G.combo=1; // 摔倒清连击
+  G.shake=14;
+  addFloater({x:W/2,y:H*0.35,txt:'CRASH!',color:'#ff5e5e',life:1.4});
   spray(G.x,G.y,22,380);
   sfx.crash();
 }
 
 function step(dt){
   const prevX=G.x;
+  if(G.stretch>0) G.stretch=Math.max(0,G.stretch-3.5*dt);
+  if(G.shake>0) G.shake=Math.max(0,G.shake-46*dt);
+  stepFloaters(dt);
   if(G.crashed){
     G.crashT+=dt;
     G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt; G.angle+=640*dt;
@@ -502,13 +524,13 @@ function step(dt){
     const s=slopeAt(G.x);
     G.vx+=(12+490*s)*dt; // 重力沿坡分量：陡则加速、缓则减速
     G.vx=Math.max(220,Math.min(MAXV,G.vx));
-    for(const rx of ramps){
-      if(prevX<rx && G.x>=rx){
+    for(const r of ramps){
+      if(prevX<r.x && G.x>=r.x){
         G.grounded=false;
-        G.vy=-G.vx*LIP_SLOPE*0.98; // 沿唇边切线起跳：水平分量保持，垂直分量由唇边角度决定
-        G.airRot=0; G.flips=0; G.airT=0;
+        G.vy=-G.vx*r.slope*0.98; // 沿唇边切线起跳：水平分量保持，垂直分量由唇边角度决定
+        G.airRot=0; G.flips=0; G.airT=0; G.nextMS=0; G.tricksThisJump=0;
         if(pressing) G.spinHeld=true; // 地面按住不放直接飞出去：空中保持转圈
-        $('flipPop').classList.remove('show');
+        G.stretch=0.8;
         sfx.launch();
         spray(G.x,G.y-20,6,240);
         break;
@@ -521,17 +543,36 @@ function step(dt){
     G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt; G.airT+=dt;
     if(G.spinHeld){ G.angle+=500*dt; G.airRot+=500*dt; }
     const f=Math.floor(Math.abs(G.airRot)/360);
-    if(f>G.flips){ G.flips=f; sfx.flip(); showFlip(f); }
+    if(f>G.flips) G.flips=f;
+    // 转体里程碑
+    const ar=Math.abs(G.airRot);
+    while(G.nextMS<TRICK_MS.length && ar>=TRICK_MS[G.nextMS][0]){
+      const deg=TRICK_MS[G.nextMS][0], pts=TRICK_MS[G.nextMS][1]*G.combo;
+      G.score+=pts; G.tricksThisJump++;
+      if(deg>G.runBestTrick) G.runBestTrick=deg;
+      addFloater({world:true,x:G.x,y:G.y-160,txt:deg+'°',sub:'+'+fmt(pts),color:'#ffd93b',life:1.2});
+      spray(G.x,G.y-46,8,200);
+      sfx.trick(G.nextMS);
+      G.nextMS++;
+    }
     const gy=groundY(G.x);
     if(G.y>=gy && G.vy>0){
       const norm=((G.angle%360)+360)%360, dev=Math.min(norm,360-norm);
       if(dev<=45){
         G.grounded=true; G.y=gy; G.vx*=0.94;
-        if(dev<=16){ G.vx=Math.min(MAXV,G.vx*1.12); toast('完美落地！✨'); sfx.perfect(); }
-        else sfx.land();
-        spray(G.x,gy,dev<=16?18:10,dev<=16?340:260);
-        G.angle=0; G.tilt=0; G.airRot=0; G.vy=0; G.flips=0;
-        $('flipPop').classList.remove('show');
+        const perfect=dev<=16;
+        if(perfect) G.vx=Math.min(MAXV,G.vx*1.12);
+        const landPts=perfect?500:200, airPts=Math.round(G.airT*100);
+        G.score+=landPts+airPts;
+        let comboTxt=null;
+        if(G.tricksThisJump>0){ G.combo=Math.min(99,G.combo+1); comboTxt='COMBO x'+G.combo; sfx.combo(); }
+        spray(G.x,gy,perfect?22:12,perfect?380:280);
+        G.shake=perfect?10:6;
+        addFloater({x:W/2,y:H*0.30,txt:perfect?'PERFECT LANDING!':'GOOD LANDING',sub:'+'+fmt(landPts),color:perfect?'#ffd93b':'#7dffcb'});
+        if(airPts>0) addFloater({x:W/2,y:H*0.30+66,txt:'AIR TIME '+G.airT.toFixed(1)+'s',sub:'+'+fmt(airPts),color:'#ffffff',life:1.0});
+        if(comboTxt) addFloater({x:W/2,y:H*0.30+132,txt:comboTxt,color:'#ff9a5e',life:1.3});
+        if(perfect) sfx.perfect(); else sfx.land();
+        G.angle=0; G.tilt=0; G.airRot=0; G.vy=0; G.flips=0; G.nextMS=0; G.tricksThisJump=0;
       }else{
         crash(dev);
       }
@@ -541,10 +582,37 @@ function step(dt){
 }
 
 /* ---------- 游戏：HUD / 结算 ---------- */
-function showFlip(f){
-  const el=$('flipPop');
-  el.textContent='x'+f+'!';
-  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+/* ---------- 漂浮得分弹窗 ---------- */
+const GFONT='-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+const floaters=[];
+function addFloater(o){
+  floaters.push(Object.assign({t:0,life:1.15,vy:-52,world:false,x:0,y:0,txt:'',sub:'',color:'#ffd93b'},o));
+  if(floaters.length>24) floaters.shift();
+}
+function stepFloaters(dt){
+  for(let i=floaters.length-1;i>=0;i--){
+    const f=floaters[i]; f.t+=dt; f.y+=f.vy*dt; f.vy*=Math.max(0,1-2*dt);
+    if(f.t>=f.life) floaters.splice(i,1);
+  }
+}
+function drawFloaters(){
+  gx.textAlign='center'; gx.textBaseline='middle';
+  for(const f of floaters){
+    const a=1-Math.pow(f.t/f.life,2);
+    if(a<=0) continue;
+    const sx=f.world? f.x-G.camX : f.x, sy=f.world? f.y-G.camY : f.y;
+    gx.globalAlpha=a;
+    gx.font='italic 900 30px '+GFONT;
+    gx.lineWidth=5; gx.strokeStyle='rgba(20,30,60,.85)';
+    gx.strokeText(f.txt,sx,sy);
+    gx.fillStyle=f.color; gx.fillText(f.txt,sx,sy);
+    if(f.sub){
+      gx.font='italic 900 22px '+GFONT; gx.lineWidth=4;
+      gx.strokeText(f.sub,sx,sy+28);
+      gx.fillStyle='#ffffff'; gx.fillText(f.sub,sx,sy+28);
+    }
+  }
+  gx.globalAlpha=1;
 }
 let toastTimer=null;
 function toast(t){
@@ -558,12 +626,13 @@ function showOver(){
   if(G.overShown) return;
   G.overShown=true;
   const d=Math.floor(G.x/METER);
-  $('overTitle').textContent = G.headFirst ? '头部着地！💥' : '摔倒了！';
-  $('overDist').textContent=d;
-  $('overFlips').textContent='x'+G.flips;
   if(d>G.best){ G.best=d; try{ localStorage.setItem('sketchyskier_best',d); }catch(e){} }
-  $('hudBest').textContent=G.best;
-  $('overBest').textContent=G.best;
+  if(G.score>G.bestScore){ G.bestScore=Math.round(G.score); try{ localStorage.setItem('sketchyskier_best_score',G.bestScore); }catch(e){} }
+  $('overTitle').textContent='CRASH! 💥';
+  $('overScore').textContent=fmt(G.score);
+  $('overBest').textContent=fmt(G.bestScore);
+  $('overTrick').textContent=G.runBestTrick>0? G.runBestTrick+'°' : '—';
+  $('overDist').textContent=d;
   $('overSub').textContent = G.headFirst ? '头先着地，颈椎表示抗议' : '脚没站稳，下次看好角度再落地';
   setTimeout(()=>{ $('overScreen').hidden=false; },350);
 }
@@ -687,9 +756,17 @@ function updateCam(dt){
 function updateHUD(){
   $('hudDist').textContent=Math.floor(G.x/METER);
   $('hudSpd').textContent=Math.round(Math.hypot(G.vx,G.vy)/METER*3.6);
+  $('hudScore').textContent=fmt(G.score);
   const air=!G.grounded&&!G.crashed&&G.running&&!G.overShown;
   $('hudAirBox').hidden=!air;
   if(air) $('hudAir').textContent=G.airT.toFixed(1);
+  const t=tierAtM(G.x/METER);
+  if(t!==G.tier){
+    G.tier=t; $('hudTier').textContent=TIER_NAMES[t];
+    if(G.running&&!G.overShown){ toast('⛰ '+TIER_NAMES[t]); sfx.tier(); }
+  }
+  if(G.combo>1){ $('hudCombo').hidden=false; $('hudComboN').textContent='x'+G.combo; }
+  else $('hudCombo').hidden=true;
 }
 
 function clouds(){
@@ -773,23 +850,24 @@ function drawJumpArc(){
   gx.beginPath(); gx.ellipse(l[0]-G.camX,groundY(l[0])-G.camY,26,8,0,0,7); gx.stroke();
 }
 function drawRamps(){
-  for(const rx of ramps){
-    const sx=rx-G.camX, x0=rx-RAMP_LEN;
-    if(sx<-RAMP_LEN-40||sx>W+RAMP_LEN+40) continue;
+  for(const r of ramps){
+    const rx=r.x, LEN=r.len;
+    const sx=rx-G.camX, x0=rx-LEN;
+    if(sx<-LEN-40||sx>W+LEN+40) continue;
     gx.save();
     gx.beginPath();
-    gx.moveTo(sx-RAMP_LEN, groundY(x0)-G.camY);
+    gx.moveTo(sx-LEN, groundY(x0)-G.camY);
     for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
     gx.lineTo(sx, groundY(rx)-G.camY+120);
-    gx.lineTo(sx-RAMP_LEN, groundY(x0)-G.camY+120);
+    gx.lineTo(sx-LEN, groundY(x0)-G.camY+120);
     gx.closePath(); gx.clip();
     for(let i=0;i<12;i++){
       gx.fillStyle=i%2 ? '#ff5e5e' : '#ffffff';
-      gx.fillRect(sx-RAMP_LEN-12+i*16, -300, 9, H+700);
+      gx.fillRect(sx-LEN-12+i*16, -300, 9, H+700);
     }
     gx.restore();
     gx.strokeStyle='#c23b3b'; gx.lineWidth=3; gx.beginPath();
-    gx.moveTo(sx-RAMP_LEN, groundY(x0)-G.camY);
+    gx.moveTo(sx-LEN, groundY(x0)-G.camY);
     for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
     gx.stroke();
     const fx=sx-4, fy=groundY(rx-4)-G.camY;
@@ -805,14 +883,45 @@ function drawSkier(){
   const shS=1+Math.min(1.6,hgt/380), shA=Math.max(0.04,0.2-hgt/2600);
   gx.fillStyle='rgba(30,50,90,'+shA.toFixed(3)+')';
   gx.beginPath(); gx.ellipse(sx, groundY(G.x)-G.camY+6, 34*shS, 8*shS, 0, 0, 7); gx.fill();
+  const st=G.stretch||0;
   gx.save();
   gx.translate(sx, sy-46);
   gx.rotate(G.angle*Math.PI/180);
+  gx.scale(1-0.16*st, 1+0.26*st);
   if(sprite) gx.drawImage(sprite,-46,-46,92,92);
   gx.restore();
+  drawSpinMeter(sx, sy-46);
+}
+
+/* 转体指示环：角度进度 + 顺时针方向箭头 */
+function drawSpinMeter(sx,sy){
+  if(G.grounded||G.crashed||!G.running||G.overShown) return;
+  const ar=Math.abs(G.airRot);
+  if(ar<15) return;
+  const R=80, frac=(ar%360)/360;
+  gx.lineWidth=6; gx.lineCap='round';
+  gx.strokeStyle='rgba(255,255,255,.28)';
+  gx.beginPath(); gx.arc(sx,sy,R,0,Math.PI*2); gx.stroke();
+  gx.strokeStyle='#ffd93b';
+  gx.beginPath(); gx.arc(sx,sy,R,-Math.PI/2,-Math.PI/2+frac*Math.PI*2); gx.stroke();
+  // 顺时针方向箭头（转圈方向 = G.angle 递增 = 屏幕顺时针）
+  const a=-Math.PI/2+frac*Math.PI*2, ax=sx+R*Math.cos(a), ay=sy+R*Math.sin(a);
+  gx.fillStyle='#ffd93b';
+  gx.save(); gx.translate(ax,ay); gx.rotate(a+Math.PI);
+  gx.beginPath(); gx.moveTo(0,-9); gx.lineTo(6,5); gx.lineTo(-6,5); gx.closePath(); gx.fill();
+  gx.restore();
+  // 已完成圈数
+  const done=Math.floor(ar/360);
+  if(done>0){
+    gx.font='900 20px '+GFONT; gx.textAlign='center'; gx.textBaseline='middle';
+    gx.lineWidth=4; gx.strokeStyle='rgba(20,30,60,.85)';
+    gx.strokeText('x'+done,sx,sy-R-18);
+    gx.fillStyle='#ffd93b'; gx.fillText('x'+done,sx,sy-R-18);
+  }
 }
 function render(dt){
-  gx.setTransform(DPR,0,0,DPR,0,0);
+  const shx=(Math.random()-0.5)*(G.shake||0), shy=(Math.random()-0.5)*(G.shake||0);
+  gx.setTransform(DPR,0,0,DPR,shx*DPR,shy*DPR);
   if(bgReady){ drawPhotoBG(); }
   else{
     const sky=gx.createLinearGradient(0,0,0,H);
@@ -825,6 +934,7 @@ function render(dt){
   drawRamps();
   drawJumpArc();
   drawSkier();
+  drawFloaters();
   drawPinesNear();
   drawParts();
   drawSnow(dt||0.016);
