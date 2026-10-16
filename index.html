@@ -112,10 +112,10 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.2</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.3</div>
   </div>
   <div id="toast"></div>
-  <div id="tapHint">轻点起跳 · 空中按住转圈，松开即停，再按继续</div>
+  <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
 </div>
 
 <!-- 结算 -->
@@ -457,6 +457,20 @@ function valleyDrop(x){
   }
   return 0;
 }
+/* 石头障碍：MOUNTAIN(500m)起出现；放在两跳台之间的平地区，放着不动必撞 */
+const rocks=[];
+{
+  for(let i=0;i<ramps.length-1;i++){
+    const r=ramps[i], nx=ramps[i+1];
+    const t=tierAtM(r.x/METER);
+    if(t===0) continue;                 // 新手区不放石头
+    if(t===1 && i%2===1) continue;       // MOUNTAIN 稀疏些
+    const lo=r.x+GAP+120, hi=nx.x-nx.len-100;
+    if(hi-lo<120) continue;
+    const x=lo+40+((i*977)%(hi-lo-80));
+    rocks.push({x, s:30+((i*531)%16)});
+  }
+}
 function groundY(x){ return baseY(x)+kickerLift(x)+valleyDrop(x); }
 function slopeAt(x){ return (groundY(x+8)-groundY(x-8))/16; }
 
@@ -474,7 +488,7 @@ function startRun(){
     best:+(localStorage.getItem('sketchyskier_best')||0),
     bestScore:+(localStorage.getItem('sketchyskier_best_score')||0),
     score:0, combo:1, runBestTrick:0, tricksThisJump:0, nextMS:0,
-    shake:0, stretch:0, tier:0
+    shake:0, stretch:0, tier:0, jumpInput:false, crashReason:null
   });
   parts.length=0; trail.length=0; floaters.length=0; initSnow();
   $('hudName').textContent=playerName;
@@ -487,14 +501,16 @@ function startRun(){
 function doJump(){
   if(!G.running||G.crashed||!G.grounded) return;
   G.grounded=false; G.vy=-320; G.airRot=0; G.flips=0; G.airT=0; G.nextMS=0; G.tricksThisJump=0;
+  G.jumpInput=true; // 主动轻点起跳：滞空分有效
   G.stretch=1;
   spray(G.x,G.y,10,260);
   addFloater({world:true,x:G.x,y:G.y-130,txt:'JUMP!',color:'#7dffcb',life:0.7});
   sfx.jump();
 }
 
-function crash(dev){
+function crash(dev, reason){
   G.crashed=true; G.crashT=0; G.headFirst=dev>135; G.vy=-260;
+  G.crashReason=reason||null;
   G.spinHeld=false; clearTimeout(spinTimer);
   G.combo=1; // 摔倒清连击
   G.shake=14;
@@ -529,6 +545,7 @@ function step(dt){
         G.grounded=false;
         G.vy=-G.vx*r.slope*0.98; // 沿唇边切线起跳：水平分量保持，垂直分量由唇边角度决定
         G.airRot=0; G.flips=0; G.airT=0; G.nextMS=0; G.tricksThisJump=0;
+        G.jumpInput=false; // 跳台自动弹飞：无操作不给滞空分
         if(pressing) G.spinHeld=true; // 地面按住不放直接飞出去：空中保持转圈
         G.stretch=0.8;
         sfx.launch();
@@ -539,6 +556,10 @@ function step(dt){
     const target=Math.max(-25,Math.min(25,Math.atan(s)*57.3));
     G.tilt+=(target-G.tilt)*Math.min(1,10*dt);
     G.angle=G.tilt;
+    // 石头碰撞：滑行中撞上直接摔
+    for(const rk of rocks){
+      if(Math.abs(G.x-rk.x)<rk.s*0.45){ crash(0,'rock'); break; }
+    }
   }else{
     G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt; G.airT+=dt;
     if(G.spinHeld){ G.angle+=500*dt; G.airRot+=500*dt; }
@@ -562,15 +583,22 @@ function step(dt){
         G.grounded=true; G.y=gy; G.vx*=0.94;
         const perfect=dev<=16;
         if(perfect) G.vx=Math.min(MAXV,G.vx*1.12);
-        const landPts=perfect?500:200, airPts=Math.round(G.airT*100);
+        // 没转体=没操作：落地 0 分；滞空分只给主动起跳或转体的人
+        const hasTricks=G.tricksThisJump>0;
+        const landPts=hasTricks?(perfect?500:200):0;
+        const airPts=(G.jumpInput||hasTricks)?Math.round(G.airT*100):0;
         G.score+=landPts+airPts;
         let comboTxt=null;
-        if(G.tricksThisJump>0){ G.combo=Math.min(99,G.combo+1); comboTxt='COMBO x'+G.combo; sfx.combo(); }
+        if(hasTricks){ G.combo=Math.min(99,G.combo+1); comboTxt='COMBO x'+G.combo; sfx.combo(); }
         spray(G.x,gy,perfect?22:12,perfect?380:280);
         G.shake=perfect?10:6;
-        addFloater({x:W/2,y:H*0.30,txt:perfect?'PERFECT LANDING!':'GOOD LANDING',sub:'+'+fmt(landPts),color:perfect?'#ffd93b':'#7dffcb'});
-        if(airPts>0) addFloater({x:W/2,y:H*0.30+66,txt:'AIR TIME '+G.airT.toFixed(1)+'s',sub:'+'+fmt(airPts),color:'#ffffff',life:1.0});
-        if(comboTxt) addFloater({x:W/2,y:H*0.30+132,txt:comboTxt,color:'#ff9a5e',life:1.3});
+        let fy=H*0.30;
+        if(hasTricks){
+          addFloater({x:W/2,y:fy,txt:perfect?'PERFECT LANDING!':'GOOD LANDING',sub:'+'+fmt(landPts),color:perfect?'#ffd93b':'#7dffcb'});
+          fy+=66;
+        }
+        if(airPts>0){ addFloater({x:W/2,y:fy,txt:'AIR TIME '+G.airT.toFixed(1)+'s',sub:'+'+fmt(airPts),color:'#ffffff',life:1.0}); fy+=66; }
+        if(comboTxt) addFloater({x:W/2,y:fy,txt:comboTxt,color:'#ff9a5e',life:1.3});
         if(perfect) sfx.perfect(); else sfx.land();
         G.angle=0; G.tilt=0; G.airRot=0; G.vy=0; G.flips=0; G.nextMS=0; G.tricksThisJump=0;
       }else{
@@ -633,7 +661,8 @@ function showOver(){
   $('overBest').textContent=fmt(G.bestScore);
   $('overTrick').textContent=G.runBestTrick>0? G.runBestTrick+'°' : '—';
   $('overDist').textContent=d;
-  $('overSub').textContent = G.headFirst ? '头先着地，颈椎表示抗议' : '脚没站稳，下次看好角度再落地';
+  $('overSub').textContent = G.crashReason==='rock' ? '撞上石头了！看到石头记得轻点起跳'
+    : G.headFirst ? '头先着地，颈椎表示抗议' : '脚没站稳，下次看好角度再落地';
   setTimeout(()=>{ $('overScreen').hidden=false; },350);
 }
 
@@ -763,7 +792,7 @@ function updateHUD(){
   const t=tierAtM(G.x/METER);
   if(t!==G.tier){
     G.tier=t; $('hudTier').textContent=TIER_NAMES[t];
-    if(G.running&&!G.overShown){ toast('⛰ '+TIER_NAMES[t]); sfx.tier(); }
+    if(G.running&&!G.overShown){ toast('⛰ '+TIER_NAMES[t]+(t>0?' · 注意石头!':'')); sfx.tier(); }
   }
   if(G.combo>1){ $('hudCombo').hidden=false; $('hudComboN').textContent='x'+G.combo; }
   else $('hudCombo').hidden=true;
@@ -849,6 +878,33 @@ function drawJumpArc(){
   gx.strokeStyle='rgba(255,255,255,.85)'; gx.lineWidth=3;
   gx.beginPath(); gx.ellipse(l[0]-G.camX,groundY(l[0])-G.camY,26,8,0,0,7); gx.stroke();
 }
+/* 石头障碍 */
+function drawRocks(){
+  for(const rk of rocks){
+    const sx=rk.x-G.camX;
+    if(sx<-60||sx>W+60) continue;
+    const gy=groundY(rk.x)-G.camY, s=rk.s;
+    gx.fillStyle='#5a6472';
+    gx.beginPath();
+    gx.moveTo(sx-s/2,gy+6);
+    gx.lineTo(sx-s*0.28,gy-s*0.72);
+    gx.lineTo(sx+s*0.18,gy-s*0.9);
+    gx.lineTo(sx+s/2,gy+6);
+    gx.closePath(); gx.fill();
+    gx.fillStyle='#eef3fa'; // 雪帽
+    gx.beginPath();
+    gx.moveTo(sx-s*0.28,gy-s*0.72);
+    gx.lineTo(sx+s*0.18,gy-s*0.9);
+    gx.lineTo(sx+s*0.05,gy-s*0.6);
+    gx.lineTo(sx-s*0.12,gy-s*0.58);
+    gx.closePath(); gx.fill();
+    gx.strokeStyle='rgba(30,36,48,.5)'; gx.lineWidth=2;
+    gx.beginPath();
+    gx.moveTo(sx-s/2,gy+6); gx.lineTo(sx-s*0.28,gy-s*0.72);
+    gx.lineTo(sx+s*0.18,gy-s*0.9); gx.lineTo(sx+s/2,gy+6);
+    gx.stroke();
+  }
+}
 function drawRamps(){
   for(const r of ramps){
     const rx=r.x, LEN=r.len;
@@ -932,6 +988,7 @@ function render(dt){
   drawSlope();
   drawTrail();
   drawRamps();
+  drawRocks();
   drawJumpArc();
   drawSkier();
   drawFloaters();
