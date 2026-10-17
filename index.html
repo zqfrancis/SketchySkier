@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.3</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.4</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -488,9 +488,10 @@ function startRun(){
     best:+(localStorage.getItem('sketchyskier_best')||0),
     bestScore:+(localStorage.getItem('sketchyskier_best_score')||0),
     score:0, combo:1, runBestTrick:0, tricksThisJump:0, nextMS:0,
-    shake:0, stretch:0, tier:0, jumpInput:false, crashReason:null
+    shake:0, stretch:0, tier:0, jumpInput:false, crashReason:null,
+    hitStop:0 // V0.4: 完美落地慢动作剩余时长
   });
-  parts.length=0; trail.length=0; floaters.length=0; initSnow();
+  parts.length=0; trail.length=0; floaters.length=0; rings.length=0; initSnow();
   $('hudName').textContent=playerName;
   $('hudBestScore').textContent=fmt(G.bestScore);
   $('hudDist').textContent='0'; $('hudScore').textContent='0';
@@ -517,6 +518,12 @@ function crash(dev, reason){
   addFloater({x:W/2,y:H*0.35,txt:'CRASH!',color:'#ff5e5e',life:1.4});
   spray(G.x,G.y,22,380);
   sfx.crash();
+}
+
+/* hit-stop 慢动作：完美落地后 0.25s 内物理 dt 缩放至 0.18 */
+function slowDt(dt){
+  if(G.hitStop>0){ G.hitStop-=dt; return dt*0.18; }
+  return dt;
 }
 
 function step(dt){
@@ -599,7 +606,7 @@ function step(dt){
         }
         if(airPts>0){ addFloater({x:W/2,y:fy,txt:'AIR TIME '+G.airT.toFixed(1)+'s',sub:'+'+fmt(airPts),color:'#ffffff',life:1.0}); fy+=66; }
         if(comboTxt) addFloater({x:W/2,y:fy,txt:comboTxt,color:'#ff9a5e',life:1.3});
-        if(perfect) sfx.perfect(); else sfx.land();
+        if(perfect){ G.hitStop=0.25; addRing(G.x,gy); sfx.perfect(); } else sfx.land();
         G.angle=0; G.tilt=0; G.airRot=0; G.vy=0; G.flips=0; G.nextMS=0; G.tricksThisJump=0;
       }else{
         crash(dev);
@@ -639,6 +646,31 @@ function drawFloaters(){
       gx.strokeText(f.sub,sx,sy+28);
       gx.fillStyle='#ffffff'; gx.fillText(f.sub,sx,sy+28);
     }
+  }
+  gx.globalAlpha=1;
+}
+/* ---------- 冲击波环（V0.4：完美落地的触感反馈） ---------- */
+const rings=[];
+function addRing(wx,wy){
+  rings.push({x:wx,y:wy,t:0,life:0.5});
+  if(rings.length>8) rings.shift();
+}
+function stepRings(dt){
+  for(let i=rings.length-1;i>=0;i--){
+    const r=rings[i]; r.t+=dt;
+    if(r.t>=r.life) rings.splice(i,1);
+  }
+}
+function drawRings(){
+  for(const r of rings){
+    const f=r.t/r.life, a=1-f;
+    gx.globalAlpha=(a*a*0.95).toFixed(3);
+    gx.strokeStyle='#ffffff';
+    gx.lineWidth=(6*(1-f)+1.5).toFixed(1);
+    gx.beginPath(); gx.ellipse(r.x-G.camX,r.y-G.camY,26+f*150,10+f*48,0,0,7); gx.stroke();
+    gx.globalAlpha=(a*a*0.5).toFixed(3);
+    gx.lineWidth=2;
+    gx.beginPath(); gx.ellipse(r.x-G.camX,r.y-G.camY,14+f*80,6+f*26,0,0,7); gx.stroke();
   }
   gx.globalAlpha=1;
 }
@@ -991,6 +1023,7 @@ function render(dt){
   drawRocks();
   drawJumpArc();
   drawSkier();
+  drawRings();
   drawFloaters();
   drawPinesNear();
   drawParts();
@@ -1036,10 +1069,12 @@ function loop(t){
   const dt=Math.min(0.033,((t-lastT)/1000)||0.016);
   lastT=t;
   if(G.running && !G.overShown){
-    const n=2, h=dt/n;
+    const sdt=slowDt(dt), n=2, h=sdt/n;
     for(let i=0;i<n;i++) step(h);
+    stepParts(sdt); stepTrail(sdt); stepRings(sdt);
+  }else{
+    stepParts(dt); stepTrail(dt); stepRings(dt);
   }
-  stepParts(dt); stepTrail(dt);
   updateCam(dt);
   render(dt);
   updateHUD();
