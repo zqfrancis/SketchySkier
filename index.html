@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.5</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.6</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -653,6 +653,36 @@ function drawFloaters(){
   }
   gx.globalAlpha=1;
 }
+/* ---------- 高速速度线（V0.6：触感反馈 —— vx>650 时屏幕左右边缘白色速度线） ---------- */
+const SPEED_LINE_MIN=650;
+function speedLineLevel(){
+  if(!G.running||G.crashed||G.overShown) return 0;
+  const v=G.vx;
+  if(v<=SPEED_LINE_MIN) return 0;
+  return Math.min(1,(v-SPEED_LINE_MIN)/(MAXV-SPEED_LINE_MIN));
+}
+function drawSpeedLines(){
+  const f=speedLineLevel();
+  if(f<=0) return;
+  gx.save();
+  gx.lineCap='round';
+  const t=Math.floor(Date.now()/33); // ~30fps 闪烁，制造速度残影感
+  const n=Math.round(8+16*f); // 速度越快线越多
+  gx.strokeStyle='rgba(255,255,255,'+(0.18+0.5*f).toFixed(2)+')';
+  gx.lineWidth=2+3*f;
+  for(let i=0;i<n;i++){
+    const left=i%2===0;
+    const y=hash1(i*13.7+t*0.618)*H; // 屏幕随机高度
+    const x0=left ? W*(0.02+hash1(i*5.3+t*0.317)*0.10)
+                 : W*(0.88-hash1(i*5.3+t*0.317)*0.10); // 左右边缘带
+    const len=(40+110*f)*(0.5+hash1(i*9.1+t*0.911)); // 速度越快线越长
+    gx.beginPath();
+    gx.moveTo(x0,y);
+    gx.lineTo(x0-len,y); // 水平拖尾（运动方向是 +x，残影拖向 -x）
+    gx.stroke();
+  }
+  gx.restore();
+}
 /* ---------- 冲击波环（V0.4：完美落地的触感反馈） ---------- */
 const rings=[];
 function addRing(wx,wy){
@@ -1032,6 +1062,7 @@ function render(dt){
   drawPinesNear();
   drawParts();
   drawSnow(dt||0.016);
+  drawSpeedLines(); // V0.6：高速时屏幕边缘白色速度线
 }
 
 /* ---------- 游戏：操控（单手：轻点起跳，按住转圈，松手即停；空中再按直接转） ---------- */
