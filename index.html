@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.6</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.7</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -601,7 +601,7 @@ function step(dt){
         G.score+=landPts+airPts;
         let comboTxt=null;
         if(hasTricks){ G.combo=Math.min(99,G.combo+1); comboTxt='COMBO x'+G.combo; sfx.combo(); }
-        spray(G.x,gy,perfect?22:12,perfect?380:280);
+        spray(G.x,gy,perfect?22:12,perfect?380:280,-G.vx,-G.vy*0.55); // V0.7：雪雾沿速度反向向后上方喷溅
         G.shake=perfect?10:6;
         let fy=H*0.30;
         if(hasTricks){
@@ -734,10 +734,23 @@ function showOver(){
 
 /* ---------- 游戏：粒子 / 雪 / 刻滑痕 ---------- */
 const parts=[];
-function spray(wx,wy,n,spd){
+/* V0.7：落地雪雾按速度方向喷溅 —— 可选 dx,dy 指定主喷溅方向（未传时保持旧的均匀喷溅） */
+function spray(wx,wy,n,spd,dx,dy){
+  let bx=0,by=0,hasDir=false;
+  if(dx!==undefined&&dy!==undefined&&Math.hypot(dx,dy)>0){
+    const m=Math.hypot(dx,dy); bx=dx/m; by=dy/m; hasDir=true;
+  }
   for(let i=0;i<n;i++){
-    const a=Math.random()*Math.PI*2, v=spd*(0.4+Math.random()*0.8);
-    parts.push({x:wx,y:wy,vx:Math.cos(a)*v,vy:Math.sin(a)*v-spd*0.5,life:0.6+Math.random()*0.5,t:0,r:2+Math.random()*3.5});
+    const v=spd*(0.4+Math.random()*0.8);
+    let vx,vy;
+    if(hasDir){
+      const aa=Math.atan2(by,bx)+(Math.random()-0.5)*2*1.0; // 主方向 ±1.0rad 扇形散布
+      vx=Math.cos(aa)*v; vy=Math.sin(aa)*v-spd*0.25;
+    }else{
+      const a=Math.random()*Math.PI*2;
+      vx=Math.cos(a)*v; vy=Math.sin(a)*v-spd*0.5;
+    }
+    parts.push({x:wx,y:wy,vx:vx,vy:vy,life:0.6+Math.random()*0.5,t:0,r:2+Math.random()*3.5});
   }
   if(parts.length>240) parts.splice(0,parts.length-240);
 }
