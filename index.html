@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.7</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.8</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -512,6 +512,35 @@ function doJump(){
 /* V0.5：触感震动 —— crash 强震、完美落地轻震（navigator.vibrate，有则用） */
 function buzz(p){ try{ if(typeof navigator!=='undefined'&&navigator.vibrate) navigator.vibrate(p); }catch(e){} }
 
+/* V0.8：风声音效随速度变化 —— WebAudio 白噪声循环 + 带通滤波，音量/音调跟 vx 走
+   无 AudioContext（未点按 / 无头测试）时只算 level、不建节点，零影响 */
+const WIND_MIN=250; // px/s：起步 300 已有轻微风声；800 满速时最响
+let wind=null;
+function windLevel(){
+  if(!G.running||G.crashed||G.overShown) return 0;
+  return Math.max(0,Math.min(1,(G.vx-WIND_MIN)/(MAXV-WIND_MIN)));
+}
+function updateWind(){
+  const lvl=windLevel();
+  if(!AC) return lvl;
+  try{
+    if(!wind){
+      const len=AC.sampleRate, buf=AC.createBuffer(1,len,AC.sampleRate), d=buf.getChannelData(0);
+      for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+      const src=AC.createBufferSource(); src.buffer=buf; src.loop=true;
+      const filt=AC.createBiquadFilter(); filt.type='bandpass'; filt.frequency.value=600; filt.Q.value=0.6;
+      const g=AC.createGain(); g.gain.value=0;
+      src.connect(filt); filt.connect(g); g.connect(AC.destination); src.start();
+      wind={gain:g.gain,filter:filt.frequency};
+    }
+    const t=AC.currentTime;
+    wind.gain.setTargetAtTime(lvl*0.14,t,0.1); // 满速 0.14：可闻但不盖过 beep 音效
+    wind.filter.setTargetAtTime(400+1400*lvl,t,0.1); // 越快音调越高
+  }catch(e){}
+  return lvl;
+}
+function stopWind(){ try{ if(wind) wind.gain.setTargetAtTime(0,AC.currentTime,0.05); }catch(e){} }
+
 function crash(dev, reason){
   G.crashed=true; G.crashT=0; G.headFirst=dev>135; G.vy=-260;
   G.crashReason=reason||null;
@@ -522,6 +551,7 @@ function crash(dev, reason){
   spray(G.x,G.y,22,380);
   sfx.crash();
   buzz([80,40,120]); // V0.5：crash 强震（双脉冲）
+  updateWind(); // V0.8：摔倒后风声淡出
 }
 
 /* hit-stop 慢动作：完美落地后 0.25s 内物理 dt 缩放至 0.18 */
@@ -1113,7 +1143,7 @@ $('redrawBtn').onclick=()=>{
 let lastT=0;
 function loop(t){
   requestAnimationFrame(loop);
-  if($('gameScreen').hidden) return;
+  if($('gameScreen').hidden){ stopWind(); return; }
   const dt=Math.min(0.033,((t-lastT)/1000)||0.016);
   lastT=t;
   if(G.running && !G.overShown){
@@ -1126,6 +1156,7 @@ function loop(t){
   updateCam(dt);
   render(dt);
   updateHUD();
+  updateWind(); // V0.8：每帧按当前 vx 更新风声音量/音调
 }
 
 /* ---------- 启动 ---------- */
