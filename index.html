@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.9</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.10</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -1031,28 +1031,47 @@ function drawRocks(){
     gx.stroke();
   }
 }
+/* V0.10：跳台侧面厚度 —— 顶部红白条纹只画在斜面表层，表层之下是整块深红侧面，
+   表层与侧面之间一条分界线 + 唇边竖直端面，跳台从“平面色块”变成“有厚度的楔形” */
+function rampSideDepth(r){ return Math.round(16 + r.len*0.05); }
 function drawRamps(){
   for(const r of ramps){
-    const rx=r.x, LEN=r.len;
+    const rx=r.x, LEN=r.len, depth=rampSideDepth(r);
     const sx=rx-G.camX, x0=rx-LEN;
     if(sx<-LEN-40||sx>W+LEN+40) continue;
+    const topY=wx=>groundY(wx)-G.camY;
+    // 1) 侧面：整块楔形深红（表层之下可见的厚度）
+    gx.fillStyle='#b23a3a';
+    gx.beginPath();
+    gx.moveTo(sx-LEN, topY(x0));
+    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, topY(x));
+    gx.lineTo(sx, topY(rx)+120);
+    gx.lineTo(sx-LEN, topY(x0)+120);
+    gx.closePath(); gx.fill();
+    // 2) 表层：只在斜面表层（斜面至斜面+depth）内画红白条纹
     gx.save();
     gx.beginPath();
-    gx.moveTo(sx-LEN, groundY(x0)-G.camY);
-    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
-    gx.lineTo(sx, groundY(rx)-G.camY+120);
-    gx.lineTo(sx-LEN, groundY(x0)-G.camY+120);
+    gx.moveTo(sx-LEN, topY(x0));
+    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, topY(x));
+    for(let x=rx;x>=x0;x-=8) gx.lineTo(x-G.camX, topY(x)+depth);
     gx.closePath(); gx.clip();
     for(let i=0;i<12;i++){
       gx.fillStyle=i%2 ? '#ff5e5e' : '#ffffff';
       gx.fillRect(sx-LEN-12+i*16, -300, 9, H+700);
     }
     gx.restore();
+    // 3) 轮廓：斜面顶线 + 表层/侧面分界线 + 唇边竖直端面
     gx.strokeStyle='#c23b3b'; gx.lineWidth=3; gx.beginPath();
-    gx.moveTo(sx-LEN, groundY(x0)-G.camY);
-    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, groundY(x)-G.camY);
+    gx.moveTo(sx-LEN, topY(x0));
+    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, topY(x));
     gx.stroke();
-    const fx=sx-4, fy=groundY(rx-4)-G.camY;
+    gx.strokeStyle='rgba(90,10,10,.75)'; gx.lineWidth=2; gx.beginPath();
+    gx.moveTo(sx-LEN, topY(x0)+depth);
+    for(let x=x0;x<=rx;x+=8) gx.lineTo(x-G.camX, topY(x)+depth);
+    gx.stroke();
+    gx.strokeStyle='#7d1f1f'; gx.lineWidth=4; gx.beginPath();
+    gx.moveTo(sx, topY(rx)); gx.lineTo(sx, topY(rx)+depth); gx.stroke();
+    const fx=sx-4, fy=topY(rx-4);
     gx.strokeStyle='#333'; gx.lineWidth=3;
     gx.beginPath(); gx.moveTo(fx,fy); gx.lineTo(fx,fy-48); gx.stroke();
     gx.fillStyle='#ff5e5e';
