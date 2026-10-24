@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.10</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.11</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -1078,10 +1078,15 @@ function drawRamps(){
     gx.beginPath(); gx.moveTo(fx,fy-48); gx.lineTo(fx+28,fy-40); gx.lineTo(fx,fy-32); gx.closePath(); gx.fill();
   }
 }
+/* V0.11：人物阴影按高度缩放/虚化 —— 离地越高影子越大越淡，并以外圈晕影模拟虚化边缘 */
+function shadowScale(hgt){ hgt=Math.max(0,hgt); return 1+Math.min(1.6,hgt/380); }
+function shadowAlpha(hgt){ hgt=Math.max(0,hgt); return Math.max(0.04,0.2-hgt/2600); }
 function drawSkier(){
   const sx=G.x-G.camX, sy=G.y-G.camY;
   const hgt=Math.max(0,groundY(G.x)-G.y);
-  const shS=1+Math.min(1.6,hgt/380), shA=Math.max(0.04,0.2-hgt/2600);
+  const shS=shadowScale(hgt), shA=shadowAlpha(hgt);
+  gx.fillStyle='rgba(30,50,90,'+(shA*0.45).toFixed(3)+')';
+  gx.beginPath(); gx.ellipse(sx, groundY(G.x)-G.camY+6, 34*shS*1.35, 8*shS*1.35, 0, 0, 7); gx.fill();
   gx.fillStyle='rgba(30,50,90,'+shA.toFixed(3)+')';
   gx.beginPath(); gx.ellipse(sx, groundY(G.x)-G.camY+6, 34*shS, 8*shS, 0, 0, 7); gx.fill();
   const st=G.stretch||0;
