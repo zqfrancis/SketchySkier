@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.11</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.12</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -798,17 +798,33 @@ function drawParts(){
     gx.beginPath(); gx.arc(p.x-G.camX,p.y-G.camY,p.r*(0.5+a*0.7),0,7); gx.fill();
   }
 }
+/* V0.12：雪粒分远近两层 —— 远层小/慢/淡/晃动小（景深远端），近层大/快/亮/晃动大（贴近镜头） */
+const SNOW_LAYERS={
+  far:{r:[0.6,1.5],v:[15,45],a:[0.20,0.45],sway:0.0003,count:35},
+  near:{r:[2.2,4.2],v:[60,130],a:[0.60,0.95],sway:0.0012,count:35}
+};
+function snowLayerConfig(layer){ return SNOW_LAYERS[layer]||SNOW_LAYERS.far; }
+function snowAlphaFor(layer,r){
+  const c=snowLayerConfig(layer);
+  const frac=Math.min(Math.max((r-c.r[0])/(c.r[1]-c.r[0]),0),1);
+  return c.a[0]+(c.a[1]-c.a[0])*frac;
+}
 const snow=[];
 function initSnow(){
   snow.length=0;
-  for(let i=0;i<70;i++) snow.push({x:Math.random(),y:Math.random(),r:1+Math.random()*2.6,v:30+Math.random()*70,ph:Math.random()*7});
+  for(const layer of ['far','near']){
+    const c=SNOW_LAYERS[layer];
+    for(let i=0;i<c.count;i++) snow.push({layer,x:Math.random(),y:Math.random(),
+      r:c.r[0]+Math.random()*(c.r[1]-c.r[0]),v:c.v[0]+Math.random()*(c.v[1]-c.v[0]),ph:Math.random()*7});
+  }
 }
 function drawSnow(dt){
   gx.fillStyle='#fff';
   for(const f of snow){
-    f.y+=f.v*dt/H; f.ph+=dt; f.x+=Math.sin(f.ph)*0.0006;
+    const c=snowLayerConfig(f.layer);
+    f.y+=f.v*dt/H; f.ph+=dt; f.x+=Math.sin(f.ph)*c.sway;
     if(f.y>1){ f.y=0; f.x=Math.random(); }
-    gx.globalAlpha=+(0.3+0.45*((f.r-1)/2.6)).toFixed(2);
+    gx.globalAlpha=+snowAlphaFor(f.layer,f.r).toFixed(2);
     gx.beginPath(); gx.arc(f.x*W,f.y*H,f.r,0,7); gx.fill();
   }
   gx.globalAlpha=1;
