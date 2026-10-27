@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.13</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.14</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -471,6 +471,22 @@ const rocks=[];
     rocks.push({x, s:30+((i*531)%16)});
   }
 }
+/* V0.14：雪堆障碍 —— 滑过减速 30%，不摔；新手区也有（温和障碍，教玩家看路），
+   与石头错开 200px 以上；只触发一次（hit 标记），空中飞过不触发 */
+const MOUND_SLOW=0.7;
+function moundHit(x, m){ return Math.abs(x-m.x)<m.s*0.5; }
+const mounds=[];
+{
+  for(let i=0;i<ramps.length-1;i++){
+    const r=ramps[i], nx=ramps[i+1];
+    if(i%2===1) continue; // 隔一对跳台放一个，密度约石头的一半
+    const lo=r.x+GAP+120, hi=nx.x-nx.len-100;
+    if(hi-lo<120) continue;
+    const x=lo+60+((i*733)%(hi-lo-120));
+    if(rocks.some(rk=>Math.abs(rk.x-x)<200)) continue;
+    mounds.push({x, s:34+((i*373)%20), hit:false});
+  }
+}
 function groundY(x){ return baseY(x)+kickerLift(x)+valleyDrop(x); }
 function slopeAt(x){ return (groundY(x+8)-groundY(x-8))/16; }
 /* V0.13：坡度伪 3D 倾斜加强 —— 贴坡角度上限 25°→42°：真实坡度 atan 值最大约 42°
@@ -496,6 +512,7 @@ function startRun(){
     hitStop:0 // V0.4: 完美落地慢动作剩余时长
   });
   parts.length=0; trail.length=0; floaters.length=0; rings.length=0; initSnow();
+  for(const md of mounds) md.hit=false; // V0.14：雪堆触发标记随开局重置
   $('hudName').textContent=playerName;
   $('hudBestScore').textContent=fmt(G.bestScore);
   $('hudDist').textContent='0'; $('hudScore').textContent='0';
@@ -604,6 +621,19 @@ function step(dt){
     // 石头碰撞：滑行中撞上直接摔
     for(const rk of rocks){
       if(Math.abs(G.x-rk.x)<rk.s*0.45){ crash(0,'rock'); break; }
+    }
+    // V0.14：雪堆：滑过减速 30%，不摔；空中飞过不触发
+    if(!G.crashed){
+      for(const md of mounds){
+        if(!md.hit && moundHit(G.x, md)){
+          md.hit=true; G.vx*=MOUND_SLOW;
+          G.shake=Math.max(G.shake||0,4);
+          spray(G.x,G.y,10,240);
+          addFloater({world:true,x:G.x,y:G.y-120,txt:'雪堆!',sub:'速度 -30%',color:'#bfe3ff',life:0.9});
+          buzz(15); // 轻震一下，提示“蹭到东西了但没摔”
+          break;
+        }
+      }
     }
   }else{
     G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt; G.airT+=dt;
@@ -1051,6 +1081,24 @@ function drawRocks(){
     gx.stroke();
   }
 }
+/* V0.14：雪堆障碍 —— 雪面上的圆润雪包，带高光和阴影底边，一眼可辨但不像石头那样危险 */
+function drawMounds(){
+  for(const md of mounds){
+    const sx=md.x-G.camX;
+    if(sx<-80||sx>W+80) continue;
+    const gy=groundY(md.x)-G.camY, s=md.s;
+    gx.fillStyle='rgba(30,50,90,.18)';
+    gx.beginPath(); gx.ellipse(sx, gy+7, s*0.62, 6, 0, 0, 7); gx.fill();
+    gx.fillStyle='#f4f9ff';
+    gx.beginPath();
+    gx.moveTo(sx-s*0.55, gy+4);
+    gx.quadraticCurveTo(sx-s*0.2, gy-s*0.55, sx+s*0.1, gy-s*0.62);
+    gx.quadraticCurveTo(sx+s*0.45, gy-s*0.3, sx+s*0.55, gy+4);
+    gx.closePath(); gx.fill();
+    gx.strokeStyle='rgba(255,255,255,.95)'; gx.lineWidth=2;
+    gx.beginPath(); gx.moveTo(sx-s*0.28, gy-s*0.42); gx.quadraticCurveTo(sx-s*0.05, gy-s*0.5, sx+s*0.12, gy-s*0.38); gx.stroke();
+  }
+}
 /* V0.10：跳台侧面厚度 —— 顶部红白条纹只画在斜面表层，表层之下是整块深红侧面，
    表层与侧面之间一条分界线 + 唇边竖直端面，跳台从“平面色块”变成“有厚度的楔形” */
 function rampSideDepth(r){ return Math.round(16 + r.len*0.05); }
@@ -1160,6 +1208,7 @@ function render(dt){
   drawTrail();
   drawRamps();
   drawRocks();
+  drawMounds(); // V0.14：雪堆障碍
   drawJumpArc();
   drawSkier();
   drawRings();
