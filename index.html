@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.14</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.15</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -487,6 +487,23 @@ const mounds=[];
     mounds.push({x, s:34+((i*373)%20), hit:false});
   }
 }
+/* V0.15：旗门 —— 两面旗杆之间 110px 的通道，贴地滑过整段通道 +150；
+   飞过去（空中越过任一杆）不算分，不穿也无惩罚；与雪堆错开（雪堆在偶数对，
+   旗门在奇数对），与石头/雪堆保持 200px 以上；只计一次（hit 标记） */
+const GATE_PTS=150, GATE_GAP=110;
+const gates=[];
+{
+  for(let i=0;i<ramps.length-1;i++){
+    const r=ramps[i], nx=ramps[i+1];
+    if(i%2===0) continue; // 奇数对放旗门，与偶数对的雪堆错开
+    const lo=r.x+GAP+120, hi=nx.x-nx.len-100;
+    if(hi-lo<120+GATE_GAP) continue;
+    const x=lo+60+((i*911)%(hi-lo-120-GATE_GAP));
+    if(rocks.some(rk=>Math.abs(rk.x-x)<200||Math.abs(rk.x-(x+GATE_GAP))<200)) continue;
+    if(mounds.some(md=>Math.abs(md.x-x)<200||Math.abs(md.x-(x+GATE_GAP))<200)) continue;
+    gates.push({x, hit:false, entered:false});
+  }
+}
 function groundY(x){ return baseY(x)+kickerLift(x)+valleyDrop(x); }
 function slopeAt(x){ return (groundY(x+8)-groundY(x-8))/16; }
 /* V0.13：坡度伪 3D 倾斜加强 —— 贴坡角度上限 25°→42°：真实坡度 atan 值最大约 42°
@@ -513,6 +530,7 @@ function startRun(){
   });
   parts.length=0; trail.length=0; floaters.length=0; rings.length=0; initSnow();
   for(const md of mounds) md.hit=false; // V0.14：雪堆触发标记随开局重置
+  for(const gt of gates){ gt.hit=false; gt.entered=false; } // V0.15：旗门触发标记随开局重置
   $('hudName').textContent=playerName;
   $('hudBestScore').textContent=fmt(G.bestScore);
   $('hudDist').textContent='0'; $('hudScore').textContent='0';
@@ -635,7 +653,23 @@ function step(dt){
         }
       }
     }
+    // V0.15：旗门：贴地滑进第一杆（entered）再贴地滑出第二杆才 +150；
+    // 中途起跳飞出通道则 entered 清掉（见空中分支），飞越整段不算分
+    if(G.grounded && !G.crashed){
+      for(const gt of gates){
+        if(gt.hit) continue;
+        if(prevX<gt.x && G.x>=gt.x) gt.entered=true;
+        if(gt.entered && prevX<gt.x+GATE_GAP && G.x>=gt.x+GATE_GAP){
+          gt.hit=true; gt.entered=false; G.score+=GATE_PTS;
+          addFloater({world:true,x:G.x,y:G.y-120,txt:'旗门!',sub:'+'+fmt(GATE_PTS),color:'#ff9a5e',life:0.9});
+          buzz(15);
+          break;
+        }
+      }
+    }
   }else{
+    // V0.15：空中时清掉正在穿越的旗门 entered——起跳飞出通道不算穿门
+    for(const gt of gates) if(gt.entered && G.x>gt.x && G.x<gt.x+GATE_GAP) gt.entered=false;
     G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt; G.airT+=dt;
     if(G.spinHeld){ G.angle+=500*dt; G.airRot+=500*dt; }
     const f=Math.floor(Math.abs(G.airRot)/360);
@@ -1099,6 +1133,23 @@ function drawMounds(){
     gx.beginPath(); gx.moveTo(sx-s*0.28, gy-s*0.42); gx.quadraticCurveTo(sx-s*0.05, gy-s*0.5, sx+s*0.12, gy-s*0.38); gx.stroke();
   }
 }
+/* V0.15：旗门 —— 两根旗杆 + 杆顶横幅线，红蓝交替，一眼可辨是“要穿过的门” */
+function drawGates(){
+  gates.forEach((gt,gi)=>{
+    const gy=groundY(gt.x)-G.camY;
+    const sx0=gt.x-G.camX, sx1=gt.x+GATE_GAP-G.camX;
+    if(sx1<-40||sx0>W+40) return;
+    const col=gi%2 ? '#3b82f6' : '#ff5e5e';
+    gx.strokeStyle='#333'; gx.lineWidth=3;
+    gx.beginPath(); gx.moveTo(sx0,gy); gx.lineTo(sx0,gy-64); gx.moveTo(sx1,gy); gx.lineTo(sx1,gy-64); gx.stroke();
+    gx.fillStyle=col;
+    gx.beginPath(); gx.moveTo(sx0,gy-64); gx.lineTo(sx0+26,gy-56); gx.lineTo(sx0,gy-48); gx.closePath(); gx.fill();
+    gx.beginPath(); gx.moveTo(sx1,gy-64); gx.lineTo(sx1+26,gy-56); gx.lineTo(sx1,gy-48); gx.closePath(); gx.fill();
+    gx.strokeStyle=col; gx.lineWidth=2; gx.setLineDash([6,6]);
+    gx.beginPath(); gx.moveTo(sx0,gy-64); gx.lineTo(sx1,gy-64); gx.stroke();
+    gx.setLineDash([]);
+  });
+}
 /* V0.10：跳台侧面厚度 —— 顶部红白条纹只画在斜面表层，表层之下是整块深红侧面，
    表层与侧面之间一条分界线 + 唇边竖直端面，跳台从“平面色块”变成“有厚度的楔形” */
 function rampSideDepth(r){ return Math.round(16 + r.len*0.05); }
@@ -1209,6 +1260,7 @@ function render(dt){
   drawRamps();
   drawRocks();
   drawMounds(); // V0.14：雪堆障碍
+  drawGates(); // V0.15：旗门
   drawJumpArc();
   drawSkier();
   drawRings();
