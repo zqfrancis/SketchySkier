@@ -109,10 +109,10 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
 <div class="screen" id="gameScreen" hidden>
   <canvas id="gameCanvas"></canvas>
   <div id="hud">
-    <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div></div>
+    <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div><div id="hudWeather" style="font-size:11px;color:#dfe6ff;margin-top:2px">天气：—</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.15</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.16</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -504,6 +504,22 @@ const gates=[];
     gates.push({x, hit:false, entered:false});
   }
 }
+/* V0.16：天气 —— 每局开局随机晴/小雪/大雾；大雾盖一层半透明雾幕降视野，
+   小雪雪粒下落更快、带一层极淡雾气，晴天无任何遮挡；只影响画面，不改计分/判定 */
+function pickWeather(roll){
+  if(roll<1/3) return 'sunny';
+  if(roll<2/3) return 'lightSnow';
+  return 'fog';
+}
+function weatherLabel(w){ return w==='fog' ? '大雾' : w==='lightSnow' ? '小雪' : '晴天'; }
+function weatherFogAlpha(w){ return w==='fog' ? 0.5 : w==='lightSnow' ? 0.05 : 0; }
+function weatherSnowSpeed(w){ return w==='lightSnow' ? 1.8 : w==='fog' ? 0.7 : 1; }
+function drawFog(){
+  const a=weatherFogAlpha(G.weather||'sunny');
+  if(a<=0) return;
+  gx.fillStyle='rgba(232,242,255,'+a.toFixed(2)+')';
+  gx.fillRect(0,0,W,H);
+}
 function groundY(x){ return baseY(x)+kickerLift(x)+valleyDrop(x); }
 function slopeAt(x){ return (groundY(x+8)-groundY(x-8))/16; }
 /* V0.13：坡度伪 3D 倾斜加强 —— 贴坡角度上限 25°→42°：真实坡度 atan 值最大约 42°
@@ -526,7 +542,8 @@ function startRun(){
     bestScore:+(localStorage.getItem('sketchyskier_best_score')||0),
     score:0, combo:1, runBestTrick:0, tricksThisJump:0, nextMS:0,
     shake:0, stretch:0, tier:0, jumpInput:false, crashReason:null,
-    hitStop:0 // V0.4: 完美落地慢动作剩余时长
+    hitStop:0, // V0.4: 完美落地慢动作剩余时长
+    weather:pickWeather(Math.random()) // V0.16：每局随机天气
   });
   parts.length=0; trail.length=0; floaters.length=0; rings.length=0; initSnow();
   for(const md of mounds) md.hit=false; // V0.14：雪堆触发标记随开局重置
@@ -535,7 +552,9 @@ function startRun(){
   $('hudBestScore').textContent=fmt(G.bestScore);
   $('hudDist').textContent='0'; $('hudScore').textContent='0';
   $('hudTier').textContent=TIER_NAMES[0]; $('hudCombo').hidden=true;
+  $('hudWeather').textContent='天气：'+weatherLabel(G.weather); // V0.16：HUD 常驻天气
   hideToast();
+  toast('天气：'+weatherLabel(G.weather)); // V0.16：开局报一次天气
 }
 
 function doJump(){
@@ -890,7 +909,7 @@ function drawSnow(dt){
   gx.fillStyle='#fff';
   for(const f of snow){
     const c=snowLayerConfig(f.layer);
-    f.y+=f.v*dt/H; f.ph+=dt; f.x+=Math.sin(f.ph)*c.sway;
+    f.y+=f.v*weatherSnowSpeed(G.weather||'sunny')*dt/H; f.ph+=dt; f.x+=Math.sin(f.ph)*c.sway;
     if(f.y>1){ f.y=0; f.x=Math.random(); }
     gx.globalAlpha=+snowAlphaFor(f.layer,f.r).toFixed(2);
     gx.beginPath(); gx.arc(f.x*W,f.y*H,f.r,0,7); gx.fill();
@@ -1269,6 +1288,7 @@ function render(dt){
   drawParts();
   drawSnow(dt||0.016);
   drawSpeedLines(); // V0.6：高速时屏幕边缘白色速度线
+  drawFog(); // V0.16：大雾降视野（盖在世界层最后，HUD 是 DOM 不受影响）
 }
 
 /* ---------- 游戏：操控（单手：轻点起跳，按住转圈，松手即停；空中再按直接转） ---------- */
