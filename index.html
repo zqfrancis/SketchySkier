@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div><div id="hudWeather" style="font-size:11px;color:#dfe6ff;margin-top:2px">天气：—</div><div id="hudNight" style="font-size:11px;color:#dfe6ff;margin-top:2px">时段：—</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.18</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.19</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
@@ -527,9 +527,11 @@ function chainBonus(lastT, nowT){
   return lastT!==null && lastT!==undefined && (nowT-lastT)<CHAIN_WINDOW;
 }
 /* V0.18：夜间模式 —— 每局开局 25% 随机触发（与天气独立）；星空 + 月亮 + 雪面月光反光；
-   只影响画面，不改计分/判定；有照片背景时只保留雪面反光，不盖星空；纯函数供测试 */
+   只影响画面，不改计分/判定；V0.19 修正：夜间一律改用渐变星空（照片背景不再盖住夜空，
+   否则 bg.webp 恒加载导致夜空/星星/月亮永不出现）；纯函数供测试 */
 const NIGHT_CHANCE=0.25, NIGHT_STARS=70;
 function pickNight(roll){ return roll<NIGHT_CHANCE ? 'night' : 'day'; }
+function usePhotoBG(ready, night){ return ready && night!=='night'; } // V0.19：夜间不用照片背景
 function nightLabel(n){ return n==='night' ? '夜间' : '白天'; }
 function nightSkyStops(n){
   return n==='night' ? ['#070d24','#16224f','#3a4a7a'] : ['#5f9df7','#a9ccf7','#e8f2ff'];
@@ -1317,14 +1319,14 @@ function drawSpinMeter(sx,sy){
 function render(dt){
   const shx=(Math.random()-0.5)*(G.shake||0), shy=(Math.random()-0.5)*(G.shake||0);
   gx.setTransform(DPR,0,0,DPR,shx*DPR,shy*DPR);
-  if(bgReady){ drawPhotoBG(); }
+  if(usePhotoBG(bgReady, G.night)){ drawPhotoBG(); }
   else{
     const stops=nightSkyStops(G.night||'day'); // V0.18：夜间深色天空
     const sky=gx.createLinearGradient(0,0,0,H);
     sky.addColorStop(0,stops[0]); sky.addColorStop(.55,stops[1]); sky.addColorStop(1,stops[2]);
     gx.fillStyle=sky; gx.fillRect(0,0,W,H);
   }
-  if(!bgReady && G.night==='night') drawNightSky(); // V0.18：星空 + 月亮（照片背景时不盖）
+  if(G.night==='night') drawNightSky(); // V0.18：星空 + 月亮（V0.19：夜间必画，不再受照片背景影响）
   drawRidges(); // V0.9：远山 3 层视差 + 距离雾
   drawPinesFar();
   drawSlope();
