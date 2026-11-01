@@ -86,7 +86,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
   <input type="file" id="fileInput" accept="image/*" hidden />
   <input id="nameInput" maxlength="12" placeholder="给滑手起个名字" />
   <button class="btn big" id="startBtn">开滑！⛷️</button>
-  <p class="hint">轻点屏幕起跳，跳台后有大片滞空区，空中按住转圈、松手即停，脚先落地才算数</p>
+  <p class="hint">轻点屏幕起跳，跳台后有大片滞空区，空中按住转圈、松手即停（左半屏逆时针、右半屏顺时针），脚先落地才算数</p>
 </div>
 
 <!-- 抠图 -->
@@ -112,10 +112,10 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div><div id="hudWeather" style="font-size:11px;color:#dfe6ff;margin-top:2px">天气：—</div><div id="hudNight" style="font-size:11px;color:#dfe6ff;margin-top:2px">时段：—</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.19</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.20</div>
   </div>
   <div id="toast"></div>
-  <div id="tapHint">轻点起跳 · 躲开石头 · 空中按住转圈</div>
+  <div id="tapHint">轻点起跳 · 躲开石头 · 按住左半屏逆时针、右半屏顺时针转圈</div>
 </div>
 
 <!-- 结算 -->
@@ -574,7 +574,7 @@ function startRun(){
     running:true, overShown:false,
     x:0, px:0, y:groundY(0), vx:300, vy:0,
     angle:0, tilt:0, airRot:0, flips:0,
-    grounded:true, spinHeld:false, airT:0,
+    grounded:true, spinHeld:false, spinDir:1, airT:0, // V0.20：转体方向（+1 顺时针 / -1 逆时针），按住位置决定
     crashed:false, crashT:0, headFirst:false,
     camX:-window.innerWidth*0.35, camY:groundY(0)-window.innerHeight*0.55, camOff:0.55,
     best:+(localStorage.getItem('sketchyskier_best')||0),
@@ -734,7 +734,7 @@ function step(dt){
     // V0.15：空中时清掉正在穿越的旗门 entered——起跳飞出通道不算穿门
     for(const gt of gates) if(gt.entered && G.x>gt.x && G.x<gt.x+GATE_GAP) gt.entered=false;
     G.vy+=GRAV*dt; G.x+=G.vx*dt; G.y+=G.vy*dt; G.airT+=dt;
-    if(G.spinHeld){ G.angle+=500*dt; G.airRot+=500*dt; }
+    if(G.spinHeld){ G.angle+=(G.spinDir||1)*500*dt; G.airRot+=500*dt; } // V0.20：angle 带方向，airRot 只计总转量（里程碑/圈数不受方向影响）
     const f=Math.floor(Math.abs(G.airRot)/360);
     if(f>G.flips) G.flips=f;
     // 转体里程碑
@@ -1290,21 +1290,21 @@ function drawSkier(){
   drawSpinMeter(sx, sy-46);
 }
 
-/* 转体指示环：角度进度 + 顺时针方向箭头 */
+/* 转体指示环：角度进度 + 方向箭头（V0.20：弧线与箭头跟随转体方向） */
 function drawSpinMeter(sx,sy){
   if(G.grounded||G.crashed||!G.running||G.overShown) return;
   const ar=Math.abs(G.airRot);
   if(ar<15) return;
-  const R=80, frac=(ar%360)/360;
+  const dir=G.spinDir||1, R=80, frac=(ar%360)/360;
   gx.lineWidth=6; gx.lineCap='round';
   gx.strokeStyle='rgba(255,255,255,.28)';
   gx.beginPath(); gx.arc(sx,sy,R,0,Math.PI*2); gx.stroke();
   gx.strokeStyle='#ffd93b';
-  gx.beginPath(); gx.arc(sx,sy,R,-Math.PI/2,-Math.PI/2+frac*Math.PI*2); gx.stroke();
-  // 顺时针方向箭头（转圈方向 = G.angle 递增 = 屏幕顺时针）
-  const a=-Math.PI/2+frac*Math.PI*2, ax=sx+R*Math.cos(a), ay=sy+R*Math.sin(a);
+  gx.beginPath(); gx.arc(sx,sy,R,-Math.PI/2,-Math.PI/2+dir*frac*Math.PI*2,dir<0); gx.stroke();
+  // 方向箭头：顺时针 = G.angle 递增；逆时针箭头反向
+  const a=-Math.PI/2+dir*frac*Math.PI*2, ax=sx+R*Math.cos(a), ay=sy+R*Math.sin(a);
   gx.fillStyle='#ffd93b';
-  gx.save(); gx.translate(ax,ay); gx.rotate(a+Math.PI);
+  gx.save(); gx.translate(ax,ay); gx.rotate(a+(dir>0?Math.PI:0));
   gx.beginPath(); gx.moveTo(0,-9); gx.lineTo(6,5); gx.lineTo(-6,5); gx.closePath(); gx.fill();
   gx.restore();
   // 已完成圈数
@@ -1346,10 +1346,16 @@ function render(dt){
   drawFog(); // V0.16：大雾降视野（盖在世界层最后，HUD 是 DOM 不受影响）
 }
 
+/* V0.20：逆时针转体 —— 按住左半屏逆时针、右半屏顺时针；键盘 F 顺时针、D 逆时针。
+   方向在按下瞬间确定并持续到松手（地面按住飞出去也保持同一方向）。 */
+function spinDirFromX(x,width){ return x<width/2 ? -1 : 1; }
+function spinDirFromKey(code){ if(code==='KeyD') return -1; if(code==='KeyF') return 1; return 0; }
+
 /* ---------- 游戏：操控（单手：轻点起跳，按住转圈，松手即停；空中再按直接转） ---------- */
 GC.addEventListener('pointerdown',e=>{
   e.preventDefault();
   pressing=true;
+  try{ const r=GC.getBoundingClientRect(); G.spinDir=spinDirFromX(e.clientX-(r.left||0),r.width||W); }catch(_){ G.spinDir=1; }
   const wasAirborne=!G.grounded; // 先记状态：doJump()会把grounded置false
   doJump();
   clearTimeout(spinTimer);
@@ -1366,10 +1372,11 @@ GC.addEventListener('pointerdown',e=>{
 window.addEventListener('keydown',e=>{
   if($('gameScreen').hidden) return;
   if(e.code==='Space'){ e.preventDefault(); doJump(); }
-  if(e.code==='KeyF'&&!e.repeat){ G.spinHeld=true; }
+  if(e.code==='KeyF'&&!e.repeat){ G.spinDir=1; G.spinHeld=true; }
+  if(e.code==='KeyD'&&!e.repeat){ G.spinDir=-1; G.spinHeld=true; } // V0.20：D 键逆时针转
 });
 window.addEventListener('keyup',e=>{
-  if(e.code==='KeyF'){ G.spinHeld=false; }
+  if(e.code==='KeyF'||e.code==='KeyD'){ G.spinHeld=false; }
 });
 $('retryBtn').onclick=()=>{ $('overScreen').hidden=true; startRun(); };
 $('redrawBtn').onclick=()=>{
