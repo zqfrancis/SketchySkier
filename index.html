@@ -112,7 +112,7 @@ h1.title .en{display:block;font-size:16px;font-style:normal;letter-spacing:6px;c
     <div class="hudBox"><span id="hudName">—</span><br><b><span id="hudDist">0</span></b> m · <b><span id="hudSpd">0</span></b> km/h<div id="hudTier">BEGINNER</div><div id="hudWeather" style="font-size:11px;color:#dfe6ff;margin-top:2px">天气：—</div><div id="hudNight" style="font-size:11px;color:#dfe6ff;margin-top:2px">时段：—</div></div>
     <div class="hudBox" id="hudAirBox" hidden style="text-align:center">腾空<br><b><span id="hudAir">0.0</span></b> s</div>
     <div class="hudBox" style="text-align:right;min-width:120px">SCORE<br><b><span id="hudScore">0</span></b><div id="hudCombo" hidden>COMBO <span id="hudComboN">x2</span></div><div class="hudBestLine">BEST <span id="hudBestScore">0</span></div></div>
-    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.20</div>
+    <div style="position:fixed;right:8px;bottom:6px;color:#fff;opacity:.55;font-size:10px;z-index:30;pointer-events:none">V0.21</div>
   </div>
   <div id="toast"></div>
   <div id="tapHint">轻点起跳 · 躲开石头 · 按住左半屏逆时针、右半屏顺时针转圈</div>
@@ -655,6 +655,13 @@ function crash(dev, reason){
   updateWind(); // V0.8：摔倒后风声淡出
 }
 
+/* V0.21：落地震感按下落速度缩放 —— 轻飘飘落地只抖一下，高空重落地抖得更狠；
+   完美落地额外 +2；下限 4（旧版普通落地 6 的量级附近）、上限 18（不超 crash 的 14 太多）；
+   vy<=0（贴地滑行、非下落）时按 0 算；纯函数供测试 */
+function landingShake(vy, perfect){
+  const v=Math.max(0, vy||0);
+  return Math.min(18, 4+Math.round(v/90)+(perfect?2:0));
+}
 /* hit-stop 慢动作：完美落地后 0.25s 内物理 dt 缩放至 0.18 */
 function slowDt(dt){
   if(G.hitStop>0){ G.hitStop-=dt; return dt*0.18; }
@@ -770,7 +777,7 @@ function step(dt){
           G.lastTrickLandT=G.runT||0;
         }
         spray(G.x,gy,perfect?22:12,perfect?380:280,-G.vx,-G.vy*0.55); // V0.7：雪雾沿速度反向向后上方喷溅
-        G.shake=perfect?10:6;
+        G.shake=landingShake(G.vy, perfect); // V0.21：落地震感按下落速度缩放（原固定 完美10/普通6）
         let fy=H*0.30;
         if(hasTricks){
           addFloater({x:W/2,y:fy,txt:perfect?'PERFECT LANDING!':'GOOD LANDING',sub:'+'+fmt(landPts),color:perfect?'#ffd93b':'#7dffcb'});
